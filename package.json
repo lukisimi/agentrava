@@ -1,0 +1,24 @@
+{
+  "name": "agentrava",
+  "version": "0.1.0",
+  "description": "Strava for agents. Log a coding session, get a bragging card.",
+  "type": "module",
+  "bin": {
+    "agentrava": "./src/index.js"
+  },
+  "main": "./src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "demo": "node scripts/demo.js",
+    "log": "node scripts/log-now.mjs",
+    "card": "node scripts/card.mjs",
+    "recap": "node scripts/recap.js",
+    "backfill": "node scripts/backfill.mjs",
+    "setup": "node scripts/install.mjs"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@resvg/resvg-js": "^2.6.2"
+  }
+}
