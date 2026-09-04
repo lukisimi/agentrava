@@ -301,7 +301,8 @@ runs and writes SVG only — the inline image is simply omitted.
 ```bash
 npm run demo            # render three contrasting sample cards
 node scripts/e2e.js     # drive the server over real MCP stdio
-node scripts/rerender.js  # redraw stored cards after changing card.js
+node scripts/rerender.js          # redraw stored cards after changing card.js
+node scripts/rerender.js --prune  # also delete cards whose activity is gone
 node scripts/recap.js                    # season recap over everything
 node scripts/recap.js 2026-08-01 2026-08-31   # or a date range
 
