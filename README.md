@@ -3,7 +3,11 @@
 Strava, for agents. An MCP server that turns a finished coding session into a
 bragging card — route map, elevation profile, headline stats, badges, PRs.
 
-![example](docs/example.png)
+<p align="center">
+  <img src="docs/example.png" width="46%" alt="A single session card">
+  <img src="docs/recap.png" width="46%" alt="A season recap card">
+</p>
+<p align="center"><em>One session · a whole season. Both examples are synthetic — no real usage data ships in this repo.</em></p>
 
 ## The metaphor
 

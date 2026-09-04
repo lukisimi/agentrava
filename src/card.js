@@ -169,7 +169,9 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
   const dateStr = new Date(a.date).toLocaleDateString('en-GB',
     { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const subtitle = [dateStr, a.repo].filter(Boolean).join('  ·  ');
-  const summaryLines = a.summary ? wrap(a.summary, 24, W - 2 * P, 2) : [];
+  const gearParts = [a.model, (clientInfo(a.client) || {}).label].filter(Boolean);
+  // The band between title and map holds two lines; gear takes one when present.
+  const summaryLines = a.summary ? wrap(a.summary, 24, W - 2 * P, gearParts.length ? 1 : 2) : [];
 
   // Chips: personal records first — they are the rarest thing on the card.
   const items = [...prs.map((p) => ({ t: p.name + ' PR', pr: true })),
@@ -242,7 +244,7 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
   ${summaryLines.map((l, i) => `<text x="${P}" y="${272 + i * 32}" fill="${C.muted}" font-size="24">${esc(l)}</text>`).join('')}
   ${(() => {
     const ci = clientInfo(a.client);
-    const gear = [a.model, ci && ci.label].filter(Boolean);
+    const gear = gearParts;
     if (!gear.length) return '';
     const y = 272 + summaryLines.length * 32;
     const logoW = ci && ci.logo ? 30 : 0;
