@@ -6,7 +6,7 @@ import os from 'node:os';
 import readline from 'node:readline';
 import { execFileSync } from 'node:child_process';
 
-import { upsertBySession, all } from './store.js';
+import { upsertBySession, all, config } from './store.js';
 import { clean } from './metrics.js';
 import { badgesFor, prsFor, streak } from './achievements.js';
 import { renderCard } from './card.js';
@@ -164,6 +164,19 @@ function inferType(s, net) {
 }
 
 
+// Prompts routinely name customers, vendors and internal projects. This cannot be
+// detected reliably, so flag the obvious cases and let the summary be switched off
+// entirely via config: { "summaries": "off" }.
+const ORG_HINT = /\b(LIMITED|LTD|LLC|INC|GMBH|B\.?V\.?|S\.?A\.?|PRIVATE|HOLDINGS?|d\.o\.o\.?|s\.r\.o\.?)\b/i;
+const ALLCAPS_RUN = /\b[A-Z][A-Z0-9&.'-]{2,}(?:\s+[A-Z][A-Z0-9&.'-]{2,}){1,}\b/;
+
+export function summaryLooksSensitive(text) {
+  if (!text) return null;
+  if (ORG_HINT.test(text)) return 'names what looks like a company';
+  if (ALLCAPS_RUN.test(text)) return 'contains a capitalised proper name';
+  return null;
+}
+
 // The first prompt becomes the card's subtitle, and cards get shared — so strip
 // the @-file mentions and absolute paths that carry the machine's directory layout.
 function cleanSummary(raw) {
@@ -207,7 +220,7 @@ export function storeSession({ sessionId, stats: s, cwd, drawCard = true, dry = 
     date: s.first ? new Date(s.first).toISOString() : undefined,
     type: inferType(s, s.added - s.removed),
     repo: repoName(cwd || s.cwd),
-    summary: cleanSummary(s.prompt).slice(0, 160),
+    summary: config().summaries === 'off' ? '' : cleanSummary(s.prompt).slice(0, 160),
     duration_seconds: duration,
     tool_calls: s.toolCalls,
     files_changed: s.files.size,

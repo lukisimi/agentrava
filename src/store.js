@@ -5,6 +5,19 @@ import os from 'node:os';
 export const HOME = process.env.AGENTRAVA_HOME || path.join(os.homedir(), '.agentrava');
 export const CARDS_DIR = path.join(HOME, 'cards');
 const DB = path.join(HOME, 'activities.json');
+const CONFIG = path.join(HOME, 'config.json');
+
+// Cards are made to be shared, so anything that reproduces raw prompt text is
+// opt-outable in one place.
+export function config() {
+  try { return JSON.parse(fs.readFileSync(CONFIG, 'utf8')); } catch { return {}; }
+}
+export function setConfig(patch) {
+  fs.mkdirSync(HOME, { recursive: true });
+  const next = { ...config(), ...patch };
+  fs.writeFileSync(CONFIG, JSON.stringify(next, null, 2) + '\n');
+  return next;
+}
 
 function ensure() {
   fs.mkdirSync(CARDS_DIR, { recursive: true });

@@ -241,6 +241,30 @@ Live auto-logging is **not** wired up yet: a full scan takes ~60 s, which is too
 slow to run on every turn. It needs either a cached scan or a targeted
 single-conversation query first.
 
+## Before you share a card
+
+The subtitle is your first prompt, and prompts name customers, vendors and
+internal projects. Path sanitising is not enough — check the text.
+
+```bash
+node scripts/privacy.mjs              # list subtitles that look sensitive
+node scripts/privacy.mjs --strip      # blank just those
+node scripts/privacy.mjs --strip-all  # blank all, and stop recording them
+```
+
+Per-card, before posting:
+
+```bash
+node scripts/card.mjs <session> --no-summary
+node scripts/card.mjs <session> --summary "Chased a render bug for four hours"
+```
+
+To never record one, put `{"summaries": "off"}` in `~/.agentrava/config.json`
+(or run `--strip-all`, which sets it for you). The detector flags company
+suffixes and capitalised proper names; **it will not catch everything** — a
+subtitle like "fix the checkout bug for acme" reads as clean. Cards are built to
+be shared, so read the subtitle before you post one.
+
 ## Photos
 
 Strava lets you put your ride photo behind the route. So does this.

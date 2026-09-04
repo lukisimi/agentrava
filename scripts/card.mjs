@@ -10,15 +10,25 @@
 //   node scripts/card.mjs <id> --photo ~/me-in-a-hammock.jpg   attach a photo
 //   node scripts/card.mjs <id> --photo chat                    use the image you just pasted
 //   node scripts/card.mjs <id> --no-photo                      remove it
+//   node scripts/card.mjs <id> --summary "text"                replace the subtitle
+//   node scripts/card.mjs <id> --no-summary                    drop it before sharing
 import { all, load, save } from '../src/store.js';
 import path from 'node:path';
 import { derive, fmtDuration, fmtPace } from '../src/metrics.js';
 import { badgesFor, streak, RECORD_NAMES } from '../src/achievements.js';
+import { summaryLooksSensitive } from '../src/session.js';
 import { renderCard } from '../src/card.js';
 import { writeCard } from '../src/render.js';
 import { photoDataUri, resolvePhotoPath } from '../src/photo.js';
 import { resolveTranscript } from '../src/transcripts.js';
 import { upsertBySession } from '../src/store.js';
+
+function persist(a) {
+  if (a.session_id) return upsertBySession(a.session_id, a);
+  const db = load();
+  const i = db.activities.findIndex((x) => x.id === a.id);
+  if (i >= 0) { db.activities[i] = a; save(db); }
+}
 
 const acts = all().slice().sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
 if (!acts.length) { console.error('Nothing logged yet.'); process.exit(1); }
@@ -27,8 +37,12 @@ const args = process.argv.slice(2);
 const photoIdx = args.indexOf('--photo');
 const photoArg = photoIdx >= 0 ? args[photoIdx + 1] : null;
 const clearPhoto = args.includes('--no-photo');
+const sumIdx = args.indexOf('--summary');
+const newSummary = sumIdx >= 0 ? args[sumIdx + 1] : null;
+const clearSummary = args.includes('--no-summary');
 // photoIdx is -1 when --photo is absent, so guard before excluding its value.
-const arg = args.filter((a, i) => !a.startsWith('--') && !(photoIdx >= 0 && i === photoIdx + 1))[0];
+const arg = args.filter((a, i) => !a.startsWith('--')
+  && !(photoIdx >= 0 && i === photoIdx + 1) && !(sumIdx >= 0 && i === sumIdx + 1))[0];
 const line = (a) => {
   const d = derive(a);
   return `${new Date(a.date).toLocaleDateString('en-CA')}  ${(a.session_id || a.id).slice(0, 8)}  ` +
@@ -54,15 +68,18 @@ if (!target) { console.error(`No activity matching "${arg}". Try --list.`); proc
 
 // Redraw from stored data with the current renderer, keeping the id so the route
 // stays the same trace it has always been.
+if (newSummary !== null || clearSummary) {
+  target = { ...target, summary: clearSummary ? '' : newSummary };
+  persist(target);
+}
+
 // A photo is remembered on the activity, so later redraws keep it.
 if (photoArg || clearPhoto) {
   const tx = resolveTranscript(null, process.env.HOME);
   const photoPath = clearPhoto ? null : resolvePhotoPath(photoArg, tx && tx.file);
   if (photoPath) photoDataUri(photoPath);          // validate before storing
   target = { ...target, photo: photoPath };
-  if (target.session_id) upsertBySession(target.session_id, target);
-  else { const db = load(); const i = db.activities.findIndex((x) => x.id === target.id);
-         if (i >= 0) { db.activities[i] = target; save(db); } }
+  persist(target);
 }
 
 const badges = badgesFor(target);
@@ -77,4 +94,6 @@ console.log(`  ${d.distance_km.toFixed(2)} km · ${Math.round(d.elevation_m)} m 
   `${target.files_changed} files · ${target.errors_recovered} errors`);
 if (prs.length) console.log(`  PR: ${prs.map((p) => p.name).join(', ')}`);
 console.log(`  ${badges.map((b) => b.name).join(', ') || 'no badges'}`);
+const risk = summaryLooksSensitive(target.summary);
+if (risk) console.log(`\n  ⚠  subtitle ${risk} — before sharing, run:\n     node scripts/card.mjs ${(target.session_id || target.id).slice(0, 8)} --no-summary`);
 console.log(`\n${out.pngPath || out.svgPath}`);
