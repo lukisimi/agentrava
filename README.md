@@ -21,6 +21,7 @@ bragging card — route map, elevation profile, headline stats, badges, PRs.
 | Suffer score | Effort, 0–100 | cadence, elevation, tokens and retries |
 | Calories | tokens burned | input + cache writes + output |
 | Economy | tokens per km | `tokens / distance` — lower is leaner |
+| — | API cost | priced per message at list rates, split by token class |
 
 Every weight above is **fitted to a sample of 36 real sessions**, not guessed.
 Churn alone left the median session at 0.00 km — most sessions read and search far
@@ -317,6 +318,23 @@ beside the name:
 
 Sourcing those files, and honouring each company's brand guidelines, is your
 call — which is why it is a local directory rather than a commit.
+
+## Cost
+
+Claude Code records four token classes per message — input, output, cache write,
+cache read — so a session can be priced exactly, per message, at whatever model
+produced it. Rates are Anthropic list prices; cache writes bill at 1.25x input
+and cache reads at 0.1x.
+
+**This is not a bill.** Claude Code on a subscription does not charge per token.
+The figure is what the session *would* have cost on the API at list price —
+useful for comparing sessions, useless as an invoice. Cursor records tokens for
+about 4% of sessions, so most Cursor cards show no cost at all.
+
+The split is the interesting part. Across 136 priced sessions: 0.7M input, 48.5M
+output, 373M cache writes and 17.2 **billion** cache reads — 98% of all tokens
+are cache reads, which is why they dominate the cost even at a tenth of the input
+rate.
 
 ## Photos
 

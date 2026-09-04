@@ -1,5 +1,6 @@
 import { ACTIVITY_TYPES, derive, fmtDuration, fmtPace, fmtNum } from './metrics.js';
 import { clientInfo } from './clients.js';
+import { fmtUsd } from './pricing.js';
 
 const W = 1080, H = 1350, P = 64;
 export const C = {
@@ -127,8 +128,8 @@ function bigStat(x, y, value, unit, label) {
 }
 function smallStat(x, y, value, label, color) {
   return `
-  <text x="${x}" y="${y}" fill="${color || C.ink}" font-size="33" font-weight="700" letter-spacing="-0.5">${esc(value)}</text>
-  <text x="${x}" y="${y + 28}" fill="${C.dim}" font-size="15" font-weight="600" letter-spacing="1.2">${esc(label.toUpperCase())}</text>`;
+  <text x="${x}" y="${y}" fill="${color || C.ink}" font-size="29" font-weight="700" letter-spacing="-0.5">${esc(value)}</text>
+  <text x="${x}" y="${y + 26}" fill="${C.dim}" font-size="14" font-weight="600" letter-spacing="1">${esc(label.toUpperCase())}</text>`;
 }
 const CHIP_SIZE = 21;
 const chipLabel = (t) => fit(t, CHIP_SIZE, 300, true);
@@ -275,11 +276,12 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
 
   <line x1="${P}" y1="926" x2="${W - P}" y2="926" stroke="#ffffff" stroke-opacity="0.08"/>
 
-  ${smallStat(P, 990, fmtPace(d.pace_min_per_km) + ' /km', 'Pace')}
-  ${smallStat(P + 192, 990, String(a.tool_calls), 'Tool calls')}
-  ${smallStat(P + 384, 990, fmtNum(a.tokens), 'Tokens')}
-  ${smallStat(P + 576, 990, d.tokens_per_km ? fmtNum(d.tokens_per_km) + '/km' : '—', 'Economy')}
-  ${smallStat(P + 768, 990, String(d.effort), 'Effort', d.effort >= 80 ? '#e0245e' : C.ink)}
+  ${smallStat(P, 990, fmtPace(d.pace_min_per_km) + '/km', 'Pace')}
+  ${smallStat(P + 159, 990, String(a.tool_calls), 'Tool calls')}
+  ${smallStat(P + 318, 990, fmtNum(a.tokens), 'Tokens')}
+  ${smallStat(P + 477, 990, a.cost_usd ? fmtUsd(a.cost_usd) : '—', 'API cost')}
+  ${smallStat(P + 636, 990, d.tokens_per_km ? fmtNum(d.tokens_per_km) + '/km' : '—', 'Economy')}
+  ${smallStat(P + 795, 990, String(d.effort), 'Effort', d.effort >= 80 ? '#e0245e' : C.ink)}
 
   ${hasChips ? `<text x="${P}" y="1082" fill="${C.dim}" font-size="17" font-weight="700" letter-spacing="2">ACHIEVEMENTS</text>` : ''}
   ${chipsSvg}
@@ -287,10 +289,14 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
   <!-- footer -->
   <line x1="${P}" y1="1252" x2="${W - P}" y2="1252" stroke="#ffffff" stroke-opacity="0.08"/>
   <text x="${P}" y="1302" fill="${C.brand}" font-size="30" font-weight="700" letter-spacing="4">AGENTRAVA</text>
-  <text x="${W - P}" y="1302" fill="${C.dim}" font-size="20" text-anchor="end">${esc(
+  <text x="${W - P}" y="1302" fill="${C.dim}" font-size="20" text-anchor="end">${esc(fit(
     [a.lines_added ? `+${fmtNum(a.lines_added)}` : '', a.lines_removed ? `−${fmtNum(a.lines_removed)}` : '',
      `${a.files_changed} files`,
+     a.tokens_in || a.tokens_out ? `${fmtNum(a.tokens_in)} in / ${fmtNum(a.tokens_out)} out` : '',
+     a.tokens_cache_read ? `${fmtNum(a.tokens_cache_read)} cached` : '',
      a.edits_accepted ? `${a.edits_accepted} edits kept${a.edits_rejected ? ` / ${a.edits_rejected} sent back` : ''}` : '',
-     a.languages.join(' / ')].filter(Boolean).join('  ·  '))}</text>
+     a.languages.join(' / ')].filter(Boolean).join('  ·  '),
+    // Clamp to the space left of the AGENTRAVA wordmark, or the two collide.
+    20, W - 2 * P - 268))}</text>
 </svg>`;
 }

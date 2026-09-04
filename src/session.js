@@ -9,6 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { upsertBySession, all, config } from './store.js';
 import { clean } from './metrics.js';
 import { dominantModel } from './models.js';
+import { costOf } from './pricing.js';
 import { badgesFor, prsFor, streak } from './achievements.js';
 import { renderCard } from './card.js';
 import { writeCard } from './render.js';
@@ -85,6 +86,7 @@ async function parseTranscript(file) {
     toolCalls: 0, tokens: 0, errors: 0, files: new Set(),
     added: 0, removed: 0, first: null, last: null, moving: 0, prompt: '', cwd: '',
     shellFiles: new Set(), models: {},
+    tokIn: 0, tokOut: 0, tokCacheWrite: 0, tokCacheRead: 0, costUsd: 0,
   };
   // Strava auto-pauses when you stop moving; a resumed session otherwise clocks
   // days of idle wall-clock as "moving time".
@@ -112,6 +114,11 @@ async function parseTranscript(file) {
       const m = d.message || {};
       if (m.model) s.models[m.model] = (s.models[m.model] || 0) + 1;
       const u = m.usage || {};
+      const tin = u.input_tokens || 0, tout = u.output_tokens || 0;
+      const cw = u.cache_creation_input_tokens || 0, cr = u.cache_read_input_tokens || 0;
+      s.tokIn += tin; s.tokOut += tout; s.tokCacheWrite += cw; s.tokCacheRead += cr;
+      // Price per message, since a session can switch models mid-way.
+      s.costUsd += costOf({ model: m.model, input: tin, output: tout, cacheWrite: cw, cacheRead: cr }) || 0;
       // Cache reads are excluded: they are context replayed, not work done.
       s.tokens += (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.output_tokens || 0);
       for (const b of m.content || []) {
@@ -230,6 +237,11 @@ export function storeSession({ sessionId, stats: s, cwd, drawCard = true, dry = 
     lines_added: s.added,
     lines_removed: s.removed,
     tokens: s.tokens,
+    tokens_in: s.tokIn || 0,
+    tokens_out: s.tokOut || 0,
+    tokens_cache_write: s.tokCacheWrite || 0,
+    tokens_cache_read: s.tokCacheRead || 0,
+    cost_usd: s.costUsd || 0,
     errors_recovered: Math.min(s.errors, 20),
     edits_accepted: s.accepted || 0,
     edits_rejected: s.rejected || 0,
