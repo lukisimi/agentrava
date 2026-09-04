@@ -279,4 +279,6 @@ AGENTRAVA_HOME=/tmp/ar node hooks/session-log.mjs \
   <<< '{"session_id":"test","transcript_path":"'"$HOME"'/.claude/projects/<proj>/<id>.jsonl","cwd":"'"$PWD"'"}'
 ```
 
-MIT.
+## License
+
+MIT — see [LICENSE](LICENSE).
