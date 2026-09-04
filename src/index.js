@@ -5,11 +5,14 @@ import {
   CallToolRequestSchema, ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 
+import fs from 'node:fs';
 import { append, all } from './store.js';
 import { clean, derive, fmtDuration, fmtPace, fmtNum, ACTIVITY_TYPES } from './metrics.js';
 import { badgesFor, prsFor, streak } from './achievements.js';
 import { renderCard } from './card.js';
 import { photoDataUri } from './photo.js';
+import { logSession } from './session.js';
+import { resolveTranscript } from './transcripts.js';
 import { renderRecap } from './recap.js';
 import { writeCard } from './render.js';
 
@@ -50,6 +53,22 @@ const TOOLS = [
       'and the card awards badges and personal records against your own history. ' +
       'Call this when the user asks you to brag, or at the end of a session worth remembering.',
     inputSchema: LOG_SCHEMA,
+  },
+  {
+    name: 'snapshot',
+    title: 'Snapshot the current session',
+    description:
+      'Log the session that is running right now and return its card — mid-session, ' +
+      'without waiting for it to end. Numbers are measured from the transcript ' +
+      '(tool calls, tokens, diffs, recovered errors, moving time), not reported by you, ' +
+      'so prefer this over log_activity whenever the work happened in Claude Code. ' +
+      'Safe to call repeatedly: it updates the same activity instead of adding duplicates. ' +
+      'With no argument it guesses the current session (matching working directory, else most ' +
+      'recently written) and names which it chose — check that before repeating the numbers.',
+    inputSchema: { type: 'object', properties: {
+      session: { type: 'string', description: 'Session id prefix. Omit for the session in progress.' },
+      photo: { type: 'string', description: 'Optional local image path for the card background.' },
+    }, additionalProperties: false },
   },
   {
     name: 'get_profile',
@@ -147,6 +166,43 @@ function recap({ from, to, title, athlete } = {}) {
   return { content };
 }
 
+async function snapshot({ session, photo } = {}) {
+  const t = resolveTranscript(session);
+  if (!t) return text(session ? `No session matching "${session}".` : 'No Claude Code transcripts found.');
+
+  const r = await logSession({ sessionId: t.id, transcriptPath: t.file });
+  if (r.skipped) return text(`Nothing to log for ${t.id.slice(0, 8)} — ${r.skipped}.`);
+
+  // The card is drawn by logSession; redraw only when a photo is requested.
+  let card = r.card;
+  if (photo) {
+    try {
+      const svg = renderCard({ ...r.activity, id: r.stored.id, date: r.stored.date },
+        { badges: r.badges, prs: r.prs, streak: streak(all()), photo: photoDataUri(photo) });
+      card = writeCard(r.stored.id, svg).pngPath || card;
+    } catch (err) { return text(`Photo failed: ${err.message}`); }
+  }
+
+  const d = derive(r.activity);
+  const lines = [
+    `🏅  ${r.activity.title}${r.activity.repo ? ` · ${r.activity.repo}` : ''}  (in progress)`,
+    `session ${t.id.slice(0, 8)} — picked by ${t.why}${t.why !== 'requested' ? '; pass `session` if that is the wrong one' : ''}`,
+    `${d.distance_km.toFixed(2)} km  ·  ${Math.round(d.elevation_m)} m climbed  ·  ${fmtDuration(r.activity.duration_seconds)}  ·  ` +
+      `${fmtPace(d.pace_min_per_km)} /km  ·  effort ${d.effort}`,
+    `${r.activity.tool_calls} tool calls  ·  ${fmtNum(r.activity.tokens)} tokens  ·  ` +
+      `${r.activity.files_changed} files  ·  ${r.activity.errors_recovered} errors climbed`,
+    r.prs.length ? `🥇 Personal record: ${r.prs.map((p) => p.name).join(', ')}` : '',
+    r.badges.length ? `Achievements: ${r.badges.map((b) => b.name).join(', ')}` : 'No badges yet.',
+    `Card: ${card}`,
+  ].filter(Boolean);
+
+  const content = [{ type: 'text', text: lines.join('\n') }];
+  if (card && card.endsWith('.png')) {
+    content.push({ type: 'image', data: fs.readFileSync(card).toString('base64'), mimeType: 'image/png' });
+  }
+  return { content };
+}
+
 function getProfile({ athlete } = {}) {
   let acts = all();
   if (athlete) acts = acts.filter((a) => a.athlete.toLowerCase() === athlete.toLowerCase());
@@ -235,6 +291,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       case 'log_activity':    return logActivity(args);
       case 'get_profile':     return getProfile(args);
       case 'recap':           return recap(args);
+      case 'snapshot':        return await snapshot(args);
       case 'list_activities': return listActivities(args);
       case 'leaderboard':     return leaderboard(args);
       default: return { isError: true, content: [{ type: 'text', text: `Unknown tool: ${name}` }] };
