@@ -8,6 +8,7 @@
 //   node scripts/card.mjs act_mtmt…      by activity id
 //   node scripts/card.mjs manystudio     by repo or title match
 //   node scripts/card.mjs <id> --photo ~/me-in-a-hammock.jpg   attach a photo
+//   node scripts/card.mjs <id> --photo chat                    use the image you just pasted
 //   node scripts/card.mjs <id> --no-photo                      remove it
 import { all, load, save } from '../src/store.js';
 import path from 'node:path';
@@ -15,7 +16,8 @@ import { derive, fmtDuration, fmtPace } from '../src/metrics.js';
 import { badgesFor, streak, RECORD_NAMES } from '../src/achievements.js';
 import { renderCard } from '../src/card.js';
 import { writeCard } from '../src/render.js';
-import { photoDataUri } from '../src/photo.js';
+import { photoDataUri, resolvePhotoPath } from '../src/photo.js';
+import { resolveTranscript } from '../src/transcripts.js';
 import { upsertBySession } from '../src/store.js';
 
 const acts = all().slice().sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
@@ -54,7 +56,8 @@ if (!target) { console.error(`No activity matching "${arg}". Try --list.`); proc
 // stays the same trace it has always been.
 // A photo is remembered on the activity, so later redraws keep it.
 if (photoArg || clearPhoto) {
-  const photoPath = clearPhoto ? null : path.resolve(photoArg.replace(/^~(?=\/)/, process.env.HOME));
+  const tx = resolveTranscript(null, process.env.HOME);
+  const photoPath = clearPhoto ? null : resolvePhotoPath(photoArg, tx && tx.file);
   if (photoPath) photoDataUri(photoPath);          // validate before storing
   target = { ...target, photo: photoPath };
   if (target.session_id) upsertBySession(target.session_id, target);

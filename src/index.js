@@ -10,7 +10,7 @@ import { append, all } from './store.js';
 import { clean, derive, fmtDuration, fmtPace, fmtNum, ACTIVITY_TYPES } from './metrics.js';
 import { badgesFor, prsFor, streak } from './achievements.js';
 import { renderCard } from './card.js';
-import { photoDataUri } from './photo.js';
+import { photoDataUri, resolvePhotoPath } from './photo.js';
 import { logSession } from './session.js';
 import { resolveTranscript } from './transcripts.js';
 import { renderRecap } from './recap.js';
@@ -38,7 +38,7 @@ const LOG_SCHEMA = {
     errors_recovered: num('Times you hit an error and worked past it. These draw as loops on the route map — be honest, they are the best part.'),
     languages: { type: 'array', items: { type: 'string' }, description: 'Languages touched.' },
     date: { type: 'string', description: 'ISO timestamp. Defaults to now.' },
-    photo: { type: 'string', description: 'Path to a local image (jpg/png/gif/webp, under 8 MB) to use as the card background, with the route drawn over it — Strava-style. Ask the user for one; do not invent a path.' },
+    photo: { type: 'string', description: 'Card background, with the route drawn over it — Strava-style. A local image path (jpg/png/gif/webp, under 8 MB), or "chat" to use the image the user most recently pasted into this conversation. Ask the user for one; do not invent a path.' },
   },
   additionalProperties: false,
 };
@@ -67,7 +67,7 @@ const TOOLS = [
       'recently written) and names which it chose — check that before repeating the numbers.',
     inputSchema: { type: 'object', properties: {
       session: { type: 'string', description: 'Session id prefix. Omit for the session in progress.' },
-      photo: { type: 'string', description: 'Optional local image path for the card background.' },
+      photo: { type: 'string', description: 'Card background: a local image path, or "chat" to use the image the user most recently pasted into this conversation.' },
     }, additionalProperties: false },
   },
   {
@@ -119,7 +119,10 @@ function logActivity(args) {
   const st = streak([...history, a]);
 
   let photo = null;
-  try { photo = a.photo ? photoDataUri(a.photo) : null; } catch (err) { photoError = err.message; }
+  try {
+    const p = a.photo ? resolvePhotoPath(a.photo, (resolveTranscript(null) || {}).file) : null;
+    if (p) { photo = photoDataUri(p); a.photo = p; }
+  } catch (err) { photoError = err.message; }
   const svg = renderCard(a, { badges, prs, streak: st, photo });
   const { pngPath, svgPath, png } = writeCard(a.id, svg);
   append({ ...a, badges: badges.map((b) => b.id), prs: prs.map((p) => p.id), card: pngPath || svgPath });
@@ -178,7 +181,7 @@ async function snapshot({ session, photo } = {}) {
   if (photo) {
     try {
       const svg = renderCard({ ...r.activity, id: r.stored.id, date: r.stored.date },
-        { badges: r.badges, prs: r.prs, streak: streak(all()), photo: photoDataUri(photo) });
+        { badges: r.badges, prs: r.prs, streak: streak(all()), photo: photoDataUri(resolvePhotoPath(photo, t.file)) });
       card = writeCard(r.stored.id, svg).pngPath || card;
     } catch (err) { return text(`Photo failed: ${err.message}`); }
   }

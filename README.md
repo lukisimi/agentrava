@@ -247,8 +247,15 @@ Strava lets you put your ride photo behind the route. So does this.
 
 ```bash
 node scripts/card.mjs <session> --photo ~/me-in-a-hammock.jpg
+node scripts/card.mjs <session> --photo chat      # the image you just pasted
 node scripts/card.mjs <session> --no-photo
 ```
+
+`--photo chat` needs no file. An image pasted into Claude Code never becomes a
+file on disk — it is stored as base64 inside the session transcript — so this
+recovers the most recent one, writes it to `~/.agentrava/photos/` named by
+content hash, and uses that. `snapshot` and `log_activity` accept
+`photo: "chat"` for the same reason: you can paste a picture and just ask.
 
 The image fills the map panel, the route is drawn over it with a heavier outline,
 and a bottom scrim keeps the elevation strip readable. jpg/png/gif/webp under
