@@ -1,8 +1,9 @@
 // Season recap: one card summarising every logged activity in a period.
 import { C, esc, charW, fit } from './card.js';
 import { derive, fmtDuration, fmtNum } from './metrics.js';
+import { config } from './store.js';
 
-const W = 1080, H = 1560, P = 64;
+const W = 1080, P = 64;
 const ACCENT = C.brand;
 const DAY_MS = 86400000;
 
@@ -57,7 +58,8 @@ function smallStat(x, y, value, label) {
 const sectionLabel = (x, y, s) =>
   `<text x="${x}" y="${y}" fill="${C.dim}" font-size="17" font-weight="700" letter-spacing="2">${esc(s)}</text>`;
 
-export function renderRecap(activities, { athlete = 'Claude', title = '' } = {}) {
+export function renderRecap(activities, { athlete, title = '' } = {}) {
+  athlete = athlete || config().athlete || activities[0]?.athlete || 'Athlete';
   const acts = activities.slice().sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
   if (!acts.length) throw new Error('No activities to recap.');
   const { t, byDay, byHour, badges, best } = summarise(acts);
@@ -76,7 +78,7 @@ export function renderRecap(activities, { athlete = 'Claude', title = '' } = {})
   const cell = colW - 6;
   const maxKm = Math.max(...byDay.values(), 1);
 
-  let cells = '', monthLabels = '', lastMonth = -1;
+  let cells = '', monthLabels = '', lastMonth = -1, lastLabelX = -Infinity;
   for (let w = 0; w < weeks; w++) {
     for (let dow = 0; dow < 7; dow++) {
       const day = new Date(start.getTime() + (w * 7 + dow) * DAY_MS);
@@ -90,7 +92,11 @@ export function renderRecap(activities, { athlete = 'Claude', title = '' } = {})
       cells += `<rect x="${gridX + w * colW}" y="${gridY + dow * colW}" width="${cell}" height="${cell}" rx="4" fill="${km ? ACCENT : '#ffffff'}" fill-opacity="${op.toFixed(3)}"/>`;
       if (dow === 3 && day.getMonth() !== lastMonth) {
         lastMonth = day.getMonth();
-        monthLabels += `<text x="${gridX + w * colW}" y="${gridY - 14}" fill="${C.dim}" font-size="15" font-weight="600">${MONTHS[lastMonth]}</text>`;
+        const lx = gridX + w * colW;
+        if (lx - lastLabelX >= 46) {          // narrow columns otherwise overprint
+          monthLabels += `<text x="${lx}" y="${gridY - 14}" fill="${C.dim}" font-size="15" font-weight="600">${MONTHS[lastMonth]}</text>`;
+          lastLabelX = lx;
+        }
       }
     }
   }
@@ -111,17 +117,20 @@ export function renderRecap(activities, { athlete = 'Claude', title = '' } = {})
   const night = byHour.slice(23).concat(byHour.slice(0, 5)).reduce((a, b) => a + b, 0);
 
   /* ---------- trophy chips ---------- */
-  const top = [...badges.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
-  let chipX = P; const chipY = histY + histH + 96;
-  let chips = '';
+  const top = [...badges.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12);
+  const chipY = histY + histH + 96;
+  let chips = '', row = 0, chipX = P;
   for (const [id, n] of top) {
     const label = fit(id.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) + ` ×${n}`, 20, 300, true);
     const w = Math.ceil(label.length * charW(20, true)) + 42;
-    if (chipX + w > W - P) break;               // measure before drawing, not after
-    chips += `<g><rect x="${chipX}" y="${chipY}" rx="25" ry="25" width="${w}" height="50" fill="${C.panel2}"/>` +
-      `<text x="${chipX + w / 2}" y="${chipY + 32}" fill="${C.ink}" font-size="20" font-weight="700" text-anchor="middle">${esc(label)}</text></g>`;
+    if (chipX + w > W - P) { row++; chipX = P; if (row > 1) break; }
+    const y = chipY + row * 62;
+    chips += `<g><rect x="${chipX}" y="${y}" rx="25" ry="25" width="${w}" height="50" fill="${C.panel2}"/>` +
+      `<text x="${chipX + w / 2}" y="${y + 32}" fill="${C.ink}" font-size="20" font-weight="700" text-anchor="middle">${esc(label)}</text></g>`;
     chipX += w + 10;
   }
+  const chipRows = row + 1;
+  const H = Math.round(chipY + chipRows * 62 + 170);
 
   const bestD = derive(best);
   const streakDays = longestStreak(byDay);
