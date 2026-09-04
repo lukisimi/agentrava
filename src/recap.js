@@ -2,6 +2,7 @@
 import { C, esc, charW, fit } from './card.js';
 import { derive, fmtDuration, fmtNum } from './metrics.js';
 import { config } from './store.js';
+import { stampedDays } from './achievements.js';
 
 const W = 1080, P = 64;
 const ACCENT = C.brand;
@@ -34,7 +35,8 @@ function summarise(acts) {
 
 // Longest run of consecutive active days in the period (not the live streak).
 function longestStreak(byDay) {
-  const days = [...byDay.keys()].sort();
+  const iso = (s) => { const d = new Date(s); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+  const days = [...new Set([...byDay.keys(), ...stampedDays().map(iso)])].sort();
   let best = 0, run = 0, prev = null;
   for (const d of days) {
     const cur = Date.parse(d + 'T00:00:00Z');

@@ -1,4 +1,7 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { derive } from './metrics.js';
+import { HOME } from './store.js';
 
 // Each badge is a claim about the session that a human could check.
 // Keep them earnable — a card where everything lights up brags about nothing.
@@ -68,8 +71,20 @@ export function prsFor(activity, history) {
 // Stored activities keep only record ids; this maps them back to display names.
 export const RECORD_NAMES = Object.fromEntries(RECORDS.map((r) => [r.id, r.name]));
 
+// Days the day-stamp hook recorded, if it is installed. Cheap to read; the file
+// gains one line a day.
+export function stampedDays() {
+  try {
+    return fs.readFileSync(path.join(HOME, 'days.txt'), 'utf8')
+      .split('\n').filter(Boolean)
+      .map((d) => new Date(d + 'T12:00:00').toDateString());
+  } catch { return []; }
+}
+
 export function streak(history) {
-  const days = new Set(history.map((a) => new Date(a.date).toDateString()));
+  // Union of days with a logged activity and days the stamp hook saw, so the
+  // streak means "days I used the tool" rather than "days I remembered to log".
+  const days = new Set([...history.map((a) => new Date(a.date).toDateString()), ...stampedDays()]);
   let n = 0;
   const cur = new Date();
   // Today not yet logged is fine — a streak can still be alive from yesterday.

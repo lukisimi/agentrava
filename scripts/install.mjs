@@ -14,8 +14,10 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SERVER = path.join(ROOT, 'src', 'index.js');
 const HOOK = path.join(ROOT, 'hooks', 'session-log.mjs');
+const STAMP = path.join(ROOT, 'hooks', 'day-stamp.sh');
 const CURSOR_HOOK = path.join(ROOT, 'hooks', 'cursor-probe.mjs');
 const HOOK_CMD = `node ${HOOK}`;
+const STAMP_CMD = `sh ${STAMP}`;
 
 const argv = process.argv.slice(2);
 const UNINSTALL = argv.includes('--uninstall');
@@ -23,6 +25,8 @@ const WITH_CURSOR = argv.includes('--cursor');
 // --manual keeps the MCP server and CLI but stops logging on every turn.
 const MANUAL = argv.includes('--manual');
 const AUTO = argv.includes('--auto');
+// Manual mode still records which days you worked, unless asked not to.
+const NO_STAMP = argv.includes('--no-stamp');
 const ok = (s) => console.log(`  ✓ ${s}`);
 const skip = (s) => console.log(`  · ${s}`);
 const warn = (s) => console.log(`  ! ${s}`);
@@ -112,6 +116,30 @@ else {
   ok(`Stop hook installed${b ? ` (backup ${b})` : ''}`);
 }
 
+// 3b. Day stamp: keeps streaks honest in manual mode for ~1% of the cost.
+{
+  const cfg2 = readJson(settings, {});
+  const stopList = (cfg2.hooks ||= {}).Stop ||= [];
+  const hasStamp = stopList.some((e) => (e.hooks || []).some((h) => h.command === STAMP_CMD));
+  const wantStamp = MANUAL && !NO_STAMP;
+
+  if (wantStamp && !hasStamp) {
+    stopList.push({ hooks: [{ type: 'command', command: STAMP_CMD, async: true, timeout: 5 }] });
+    writeJson(settings, cfg2);
+    ok('day-stamp hook installed (records the date only, ~10ms)');
+  } else if (wantStamp && hasStamp) {
+    skip('day-stamp hook already installed');
+  } else if ((UNINSTALL || AUTO) && hasStamp) {
+    cfg2.hooks.Stop = stopList
+      .map((e) => ({ ...e, hooks: (e.hooks || []).filter((h) => h.command !== STAMP_CMD) }))
+      .filter((e) => e.hooks.length);
+    if (!cfg2.hooks.Stop.length) delete cfg2.hooks.Stop;
+    if (!Object.keys(cfg2.hooks).length) delete cfg2.hooks;
+    writeJson(settings, cfg2);
+    ok('day-stamp hook removed');
+  }
+}
+
 // 4. Cursor probe, opt-in
 if (WITH_CURSOR || UNINSTALL) {
   console.log('\nCursor');
@@ -140,11 +168,14 @@ if (WITH_CURSOR || UNINSTALL) {
 
 console.log(`\n${'─'.repeat(46)}`);
 if (MANUAL) {
-  console.log(`Manual mode. Nothing runs on its own now — log when you want to:
+  console.log(`Manual mode. Sessions are logged only when you ask:
 
   npm run log                    the session you are in
   node scripts/card.mjs --best   your biggest session
   node scripts/recap.js          season recap
+
+A day-stamp hook still records which days you worked (~10ms, one line a day),
+so streaks stay honest without logging every session. Skip it with --no-stamp.
 
 The MCP tools still work; ask for a snapshot in chat.
 Put automatic logging back with: npm run setup -- --auto
