@@ -75,8 +75,13 @@ if (FORCE && !DRY) {
   if (db.activities.length) {
     const bak = path.join(os.homedir(), '.agentrava', `activities.json.${Date.now()}.bak`);
     fs.writeFileSync(bak, JSON.stringify(db, null, 2));
-    console.log(`--force: backed up ${db.activities.length} activities to ${path.basename(bak)}, rebuilding from empty\n`);
-    save({ version: 1, activities: [] });
+    // Only Claude Code sessions are rebuilt here, so only those may be cleared —
+    // wiping the whole store deletes every Cursor activity this script cannot restore.
+    const keep = db.activities.filter((a) => a.client && a.client !== 'claude-code');
+    const dropped = db.activities.length - keep.length;
+    console.log(`--force: backed up ${db.activities.length} activities to ${path.basename(bak)}; ` +
+      `rebuilding ${dropped} Claude Code one(s), keeping ${keep.length} from other clients\n`);
+    save({ version: 1, activities: keep });
   }
 }
 

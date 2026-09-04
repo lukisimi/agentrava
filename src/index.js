@@ -6,7 +6,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 import fs from 'node:fs';
-import { append, all } from './store.js';
+import { append, all, load, save, config, setConfig } from './store.js';
 import { clean, derive, fmtDuration, fmtPace, fmtNum, ACTIVITY_TYPES } from './metrics.js';
 import { badgesFor, prsFor, streak } from './achievements.js';
 import { renderCard } from './card.js';
@@ -69,6 +69,17 @@ const TOOLS = [
       session: { type: 'string', description: 'Session id prefix. Omit for the session in progress.' },
       photo: { type: 'string', description: 'Card background: a local image path, or "chat" to use the image the user most recently pasted into this conversation.' },
     }, additionalProperties: false },
+  },
+  {
+    name: 'set_athlete',
+    title: 'Set the athlete name',
+    description:
+      'Set the name shown on every card. The athlete is the person whose account this is — ' +
+      'the model that did the work is recorded separately as gear. Applies to past cards too. ' +
+      'Ask the user what they want; do not guess a name from their email or filesystem.',
+    inputSchema: { type: 'object', properties: {
+      name: { type: 'string', description: 'Display name, e.g. "Luka" or "Luka Pecavar". Max 40 characters.' },
+    }, required: ['name'], additionalProperties: false },
   },
   {
     name: 'get_profile',
@@ -206,6 +217,21 @@ async function snapshot({ session, photo } = {}) {
   return { content };
 }
 
+function setAthlete({ name } = {}) {
+  const clean = String(name || '').trim().slice(0, 40);
+  if (!clean) return text('Give a name, e.g. set_athlete with name "Luka".');
+  const previous = config().athlete || '(unset)';
+  setConfig({ athlete: clean });
+
+  // The athlete is a property of the account, so past cards should agree.
+  const db = load();
+  let n = 0;
+  for (const a of db.activities) { if (a.athlete !== clean) { a.athlete = clean; n++; } }
+  save(db);
+  return text(`Athlete set to "${clean}" (was ${previous}). Updated ${n} stored ` +
+    `activit${n === 1 ? 'y' : 'ies'} — run \`node scripts/rerender.js\` to redraw the cards.`);
+}
+
 function getProfile({ athlete } = {}) {
   let acts = all();
   if (athlete) acts = acts.filter((a) => a.athlete.toLowerCase() === athlete.toLowerCase());
@@ -294,6 +320,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       case 'log_activity':    return logActivity(args);
       case 'get_profile':     return getProfile(args);
       case 'recap':           return recap(args);
+      case 'set_athlete':     return setAthlete(args);
       case 'snapshot':        return await snapshot(args);
       case 'list_activities': return listActivities(args);
       case 'leaderboard':     return leaderboard(args);

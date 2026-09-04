@@ -234,29 +234,21 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
   <text x="${P + 33}" y="114" fill="${accent}" font-size="32" font-weight="700" text-anchor="middle">${esc(a.athlete.slice(0, 1).toUpperCase())}</text>
   <text x="${P + 84}" y="95" fill="${C.ink}" font-size="29" font-weight="700">${esc(fit(a.athlete, 29, 500, true))}</text>
   <text x="${P + 84}" y="127" fill="${C.muted}" font-size="21">${esc(fit(subtitle, 21, 700))}</text>
-  ${(() => {
-    const ci = clientInfo(a.client);
-    const type = esc(a.type.toUpperCase());
-    if (!ci) return `<text x="${W - P}" y="98" fill="${C.dim}" font-size="19" font-weight="700" letter-spacing="2" text-anchor="end">${type}</text>`;
-    const name = esc(ci.label.toUpperCase());
-    // Caps are wider than charW's average, and letter-spacing adds a fixed gap per
-    // character; ignoring either collides the separator with the label.
-    const CAP = 19 * 0.72;
-    const width = (str, tracking) => str.length * (CAP + tracking);
-    const typeW = width(type, 2);
-    const nameW = width(name, 1.2);
-    const sepX = W - P - typeW - 16;
-    const nameX = sepX - 16;
-    return `<text x="${W - P}" y="98" fill="${C.dim}" font-size="19" font-weight="700" letter-spacing="2" text-anchor="end">${type}</text>
-  <text x="${sepX.toFixed(0)}" y="98" fill="${C.dim}" font-size="19" font-weight="700" text-anchor="end">·</text>
-  <text x="${nameX.toFixed(0)}" y="98" fill="${ci.tint}" fill-opacity="0.85" font-size="19" font-weight="700" letter-spacing="1.2" text-anchor="end">${name}</text>` +
-      (ci.logo ? `<image href="${ci.logo}" x="${(nameX - nameW - 30).toFixed(0)}" y="80" width="24" height="24" preserveAspectRatio="xMidYMid meet"/>` : '');
-  })()}
+  <text x="${W - P}" y="98" fill="${C.dim}" font-size="19" font-weight="700" letter-spacing="2" text-anchor="end">${esc(a.type.toUpperCase())}</text>
   ${streak > 1 ? `<text x="${W - P}" y="127" fill="${accent}" font-size="21" font-weight="700" text-anchor="end">${streak}-day streak</text>` : ''}
 
   <!-- title -->
   <text x="${P}" y="228" fill="${C.ink}" font-size="56" font-weight="700" letter-spacing="-1.2">${esc(fit(a.title, 56, W - 2 * P, true))}</text>
   ${summaryLines.map((l, i) => `<text x="${P}" y="${272 + i * 32}" fill="${C.muted}" font-size="24">${esc(l)}</text>`).join('')}
+  ${(() => {
+    const ci = clientInfo(a.client);
+    const gear = [a.model, ci && ci.label].filter(Boolean);
+    if (!gear.length) return '';
+    const y = 272 + summaryLines.length * 32;
+    const logoW = ci && ci.logo ? 30 : 0;
+    return (ci && ci.logo ? `<image href="${ci.logo}" x="${P}" y="${y - 17}" width="22" height="22" preserveAspectRatio="xMidYMid meet"/>` : '') +
+      `<text x="${P + logoW}" y="${y}" fill="${C.dim}" font-size="21" font-weight="600">${esc(gear.join('  ·  '))}</text>`;
+  })()}
 
   <!-- map -->
   <rect x="${mapBox.x}" y="${mapBox.y}" width="${mapBox.w}" height="${mapBox.h}" rx="26" fill="${C.panel}"/>

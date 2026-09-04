@@ -265,6 +265,22 @@ suffixes and capitalised proper names; **it will not catch everything** — a
 subtitle like "fix the checkout bug for acme" reads as clean. Cards are built to
 be shared, so read the subtitle before you post one.
 
+## Athlete and gear
+
+The athlete is **you**, not the model — Strava does not file your rides under the
+bike. The model that did the work is gear, shown under the title with the client:
+`Claude Opus 5 · Cursor`.
+
+```bash
+node scripts/whoami.mjs "Luka"    # set the name on every card, past and future
+node scripts/whoami.mjs           # show the current one
+```
+
+`set_athlete` does the same from chat. Unset, cards read "Athlete", which is the
+safe default for sharing. The model is measured, never assumed: Claude Code
+records it per message, and Cursor records it for about a sixth of conversations
+— the rest show only the client.
+
 ## Which tool ran the session
 
 Cards name the client in the header — `CURSOR · DEBUG`, `CLAUDE CODE · FEATURE`.

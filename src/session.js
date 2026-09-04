@@ -8,6 +8,7 @@ import { execFileSync } from 'node:child_process';
 
 import { upsertBySession, all, config } from './store.js';
 import { clean } from './metrics.js';
+import { dominantModel } from './models.js';
 import { badgesFor, prsFor, streak } from './achievements.js';
 import { renderCard } from './card.js';
 import { writeCard } from './render.js';
@@ -83,7 +84,7 @@ async function parseTranscript(file) {
   const s = {
     toolCalls: 0, tokens: 0, errors: 0, files: new Set(),
     added: 0, removed: 0, first: null, last: null, moving: 0, prompt: '', cwd: '',
-    shellFiles: new Set(),
+    shellFiles: new Set(), models: {},
   };
   // Strava auto-pauses when you stop moving; a resumed session otherwise clocks
   // days of idle wall-clock as "moving time".
@@ -109,6 +110,7 @@ async function parseTranscript(file) {
 
     if (d.type === 'assistant') {
       const m = d.message || {};
+      if (m.model) s.models[m.model] = (s.models[m.model] || 0) + 1;
       const u = m.usage || {};
       // Cache reads are excluded: they are context replayed, not work done.
       s.tokens += (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.output_tokens || 0);
@@ -219,6 +221,7 @@ export function storeSession({ sessionId, stats: s, cwd, drawCard = true, dry = 
   const activity = clean({
     date: s.first ? new Date(s.first).toISOString() : undefined,
     type: inferType(s, s.added - s.removed),
+    model: s.model || dominantModel(s.models) || undefined,
     repo: repoName(cwd || s.cwd),
     summary: config().summaries === 'off' ? '' : cleanSummary(s.prompt).slice(0, 160),
     duration_seconds: duration,

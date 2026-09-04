@@ -1,3 +1,5 @@
+import { config } from './store.js';
+
 // The Strava metaphor lives here: raw session numbers in, athletic-sounding
 // derived stats out. Nothing else in the codebase should invent a formula.
 
@@ -34,7 +36,7 @@ export function clean(input = {}) {
     type,
     title: (input.title || '').trim() || autoTitle(type, isNaN(at) ? new Date() : at),
     summary: (input.summary || '').trim().slice(0, 160),
-    athlete: (input.athlete || 'Claude').trim().slice(0, 40),
+    athlete: (input.athlete || config().athlete || 'Athlete').trim().slice(0, 40),
     repo: (input.repo || '').trim().slice(0, 60),
     duration_seconds: n(input.duration_seconds, 60),
     tool_calls: n(input.tool_calls),
@@ -50,6 +52,8 @@ export function clean(input = {}) {
     languages: (Array.isArray(input.languages) ? input.languages : []).slice(0, 6).map(String),
     notes: (Array.isArray(input.notes) ? input.notes : []).slice(0, 4).map((s) => String(s).slice(0, 80)),
     photo: input.photo ? String(input.photo) : undefined,
+    model: input.model ? String(input.model).slice(0, 40) : undefined,
+    client: input.client ? String(input.client).slice(0, 30) : undefined,
   };
 }
 

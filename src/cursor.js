@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
+import { dominantModel } from './models.js';
 
 export const DEFAULT_DB = path.join(os.homedir(),
   'Library', 'Application Support', 'Cursor', 'User', 'globalStorage', 'state.vscdb');
@@ -31,6 +32,20 @@ const ARG = (k) => `(CASE WHEN json_valid(${RAW}) THEN json_extract(${RAW},'$.${
 // One grouped pass over the whole table. Per-conversation `LIKE 'bubbleId:<id>:%'`
 // queries are each a full scan of a multi-GB table, and six of them per session
 // times out; this scans once and returns every conversation at once.
+// Which model drove each conversation. Most bubbles record "default", so only the
+// named ones count — about a sixth of conversations end up with real gear.
+function scanModels(db) {
+  const out = new Map();
+  for (const [c, m, n] of query(db, `
+    SELECT substr(key,10,36) c, ${J('modelInfo.modelName')} m, count(*)
+    FROM cursorDiskKV WHERE key LIKE 'bubbleId:%' AND m IS NOT NULL
+    GROUP BY c, m;`)) {
+    if (!out.has(c)) out.set(c, {});
+    out.get(c)[m] = Number(n) || 0;
+  }
+  return out;
+}
+
 function scanBubbles(db) {
   const rows = query(db, `
     SELECT substr(key,10,36) c,
@@ -112,6 +127,7 @@ function scanTimes(db) {
 export function scanCursorDb(db = DEFAULT_DB) {
   if (!fs.existsSync(db)) throw new Error(`no Cursor database at ${db}`);
   const bubbles = scanBubbles(db);
+  const models = scanModels(db);
   const diffs = scanDiffs(db);
   const files = scanFiles(db);
   const times = scanTimes(db);
@@ -122,6 +138,7 @@ export function scanCursorDb(db = DEFAULT_DB) {
     let moving = 0;
     for (let i = 1; i < ts.length; i++) moving += Math.min(ts[i] - ts[i - 1], 300_000);
     const d = diffs.get(id) || { added: 0, removed: 0 };
+    b.model = dominantModel(models.get(id) || {});
     out.set(id, {
       ...b, moving,
       files: files.get(id) || new Set(),
