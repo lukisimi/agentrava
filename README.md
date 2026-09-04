@@ -265,6 +265,29 @@ suffixes and capitalised proper names; **it will not catch everything** — a
 subtitle like "fix the checkout bug for acme" reads as clean. Cards are built to
 be shared, so read the subtitle before you post one.
 
+## Which tool ran the session
+
+Cards name the client in the header — `CURSOR · DEBUG`, `CLAUDE CODE · FEATURE`.
+Known ids: `claude-code`, `claude`, `cursor`, `openai`, `codex`, `grok`,
+`copilot`, `windsurf`, `zed`; anything else renders as its own name.
+
+**No logo artwork ships with this repo.** Those marks are trademarks of their
+owners, and bundling them into an MIT repo means redistributing brand assets that
+most brand guidelines restrict. Naming a product is ordinary nominative use;
+shipping its logo is not the same thing.
+
+If you want logos on your own cards, put a file at
+`~/.agentrava/logos/<client>.svg` (or `.png`, under 512 KB) and it is drawn
+beside the name:
+
+```
+~/.agentrava/logos/cursor.svg
+~/.agentrava/logos/claude-code.png
+```
+
+Sourcing those files, and honouring each company's brand guidelines, is your
+call — which is why it is a local directory rather than a commit.
+
 ## Photos
 
 Strava lets you put your ride photo behind the route. So does this.
