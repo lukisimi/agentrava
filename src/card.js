@@ -127,8 +127,8 @@ function bigStat(x, y, value, unit, label) {
 }
 function smallStat(x, y, value, label, color) {
   return `
-  <text x="${x}" y="${y}" fill="${color || C.ink}" font-size="38" font-weight="700" letter-spacing="-0.5">${esc(value)}</text>
-  <text x="${x}" y="${y + 28}" fill="${C.dim}" font-size="17" font-weight="600" letter-spacing="1.4">${esc(label.toUpperCase())}</text>`;
+  <text x="${x}" y="${y}" fill="${color || C.ink}" font-size="33" font-weight="700" letter-spacing="-0.5">${esc(value)}</text>
+  <text x="${x}" y="${y + 28}" fill="${C.dim}" font-size="15" font-weight="600" letter-spacing="1.2">${esc(label.toUpperCase())}</text>`;
 }
 const CHIP_SIZE = 21;
 const chipLabel = (t) => fit(t, CHIP_SIZE, 300, true);
@@ -276,9 +276,10 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
   <line x1="${P}" y1="926" x2="${W - P}" y2="926" stroke="#ffffff" stroke-opacity="0.08"/>
 
   ${smallStat(P, 990, fmtPace(d.pace_min_per_km) + ' /km', 'Pace')}
-  ${smallStat(P + 246, 990, String(a.tool_calls), 'Tool calls')}
-  ${smallStat(P + 492, 990, fmtNum(a.tokens), 'Tokens burned')}
-  ${smallStat(P + 720, 990, String(d.effort), 'Effort', d.effort >= 80 ? '#e0245e' : C.ink)}
+  ${smallStat(P + 192, 990, String(a.tool_calls), 'Tool calls')}
+  ${smallStat(P + 384, 990, fmtNum(a.tokens), 'Tokens')}
+  ${smallStat(P + 576, 990, d.tokens_per_km ? fmtNum(d.tokens_per_km) + '/km' : '—', 'Economy')}
+  ${smallStat(P + 768, 990, String(d.effort), 'Effort', d.effort >= 80 ? '#e0245e' : C.ink)}
 
   ${hasChips ? `<text x="${P}" y="1082" fill="${C.dim}" font-size="17" font-weight="700" letter-spacing="2">ACHIEVEMENTS</text>` : ''}
   ${chipsSvg}

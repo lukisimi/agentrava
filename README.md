@@ -20,6 +20,7 @@ bragging card — route map, elevation profile, headline stats, badges, PRs.
 | Cadence | tool calls per minute | `tool_calls / minutes` |
 | Suffer score | Effort, 0–100 | cadence, elevation, tokens and retries |
 | Calories | tokens burned | input + cache writes + output |
+| Economy | tokens per km | `tokens / distance` — lower is leaner |
 
 Every weight above is **fitted to a sample of 36 real sessions**, not guessed.
 Churn alone left the median session at 0.00 km — most sessions read and search far
@@ -47,6 +48,15 @@ Measured across 134 real sessions:
 | Distance | duration | 0.77 |
 | Elevation | errors recovered | **0.91** |
 | Elevation | files changed | 0.88 |
+
+**Raw tokens cannot rank efficiency.** They correlate 0.72 with distance, so the
+number mostly says how big a session was. Dividing by distance gives Economy,
+which correlates 0.08 with distance — size-independent, and therefore actually
+comparable between sessions. Across 142 sessions it spans 83k/km at the tenth
+percentile to 435k/km at the ninetieth, a 5.3x spread. It measures token cost per
+unit of *volume*, not per unit of *value*: a session that finds the right answer
+in five calls scores badly on it. And Cursor records tokens for only 4% of
+sessions, so it is not comparable across tools.
 
 So distance is essentially *volume of activity* — 69% of it comes from the tool-call
 term, not churn — and elevation is essentially *friction*, 58% of it from errors.

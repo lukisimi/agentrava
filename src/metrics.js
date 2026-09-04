@@ -83,6 +83,11 @@ export function derive(a) {
     effort,                                          // "suffer score", 0-100
     net_lines: a.lines_added - a.lines_removed,
     tokens_per_min: a.tokens / minutes,
+    // Economy: token cost per unit of ground covered. Raw token count mostly
+    // tracks how big a session was (r=0.72 with distance); dividing it out gives
+    // a size-independent figure (r=0.08) that is actually comparable between
+    // sessions — the analogue of running economy rather than total calories.
+    tokens_per_km: distance_km > 0.2 ? a.tokens / distance_km : 0,
   };
 }
 
