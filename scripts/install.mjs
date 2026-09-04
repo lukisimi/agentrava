@@ -49,20 +49,31 @@ if (!UNINSTALL) {
 
 // 2. MCP server registration, via the CLI when it exists so its config format is authoritative
 console.log('\nMCP server');
-let claudeCli = true;
-try { execFileSync('claude', ['--version'], { stdio: 'ignore', timeout: 15000 }); } catch { claudeCli = false; }
-if (!claudeCli) {
+// The CLI is not always on PATH — notably inside the desktop app's shell — so
+// check the usual install locations before giving up on registering the server.
+function findClaude() {
+  const candidates = ['claude',
+    path.join(os.homedir(), '.local', 'bin', 'claude'),
+    '/opt/homebrew/bin/claude', '/usr/local/bin/claude',
+    path.join(os.homedir(), '.claude', 'local', 'claude')];
+  for (const c of candidates) {
+    try { execFileSync(c, ['--version'], { stdio: 'ignore', timeout: 15000 }); return c; } catch { /* next */ }
+  }
+  return null;
+}
+const CLAUDE = findClaude();
+if (!CLAUDE) {
   warn('`claude` CLI not found — add this to your MCP client config yourself:');
   console.log(`      {"mcpServers":{"agentrava":{"command":"node","args":["${SERVER}"]}}}`);
 } else if (UNINSTALL) {
-  try { execFileSync('claude', ['mcp', 'remove', 'agentrava', '-s', 'user'], { stdio: 'ignore' }); ok('removed agentrava'); }
+  try { execFileSync(CLAUDE, ['mcp', 'remove', 'agentrava', '-s', 'user'], { stdio: 'ignore' }); ok('removed agentrava'); }
   catch { skip('agentrava was not registered'); }
 } else {
   let present = false;
-  try { present = execFileSync('claude', ['mcp', 'list'], { encoding: 'utf8', timeout: 30000 }).includes('agentrava'); } catch { /* fall through */ }
+  try { present = execFileSync(CLAUDE, ['mcp', 'list'], { encoding: 'utf8', timeout: 30000 }).includes('agentrava'); } catch { /* fall through */ }
   if (present) skip('agentrava already registered');
   else {
-    execFileSync('claude', ['mcp', 'add', 'agentrava', '-s', 'user', '--', 'node', SERVER], { stdio: 'ignore' });
+    execFileSync(CLAUDE, ['mcp', 'add', 'agentrava', '-s', 'user', '--', 'node', SERVER], { stdio: 'ignore' });
     ok('registered at user scope');
   }
 }
