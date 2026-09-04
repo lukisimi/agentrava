@@ -3,6 +3,8 @@
 // reverses every change.
 //
 //   node scripts/install.mjs [--cursor] [--uninstall]
+//   node scripts/install.mjs --manual    remove the Stop hook, keep everything else
+//   node scripts/install.mjs --auto      put the Stop hook back
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -18,6 +20,9 @@ const HOOK_CMD = `node ${HOOK}`;
 const argv = process.argv.slice(2);
 const UNINSTALL = argv.includes('--uninstall');
 const WITH_CURSOR = argv.includes('--cursor');
+// --manual keeps the MCP server and CLI but stops logging on every turn.
+const MANUAL = argv.includes('--manual');
+const AUTO = argv.includes('--auto');
 const ok = (s) => console.log(`  ✓ ${s}`);
 const skip = (s) => console.log(`  · ${s}`);
 const warn = (s) => console.log(`  ! ${s}`);
@@ -35,10 +40,11 @@ function writeJson(file, obj) {
   fs.writeFileSync(file, JSON.stringify(obj, null, 2) + '\n');
 }
 
-console.log(`\nAgentrava ${UNINSTALL ? 'uninstall' : 'install'}\n${'─'.repeat(46)}`);
+const MODE = UNINSTALL ? 'uninstall' : MANUAL ? 'switch to manual' : AUTO ? 'switch to auto' : 'install';
+console.log(`\nAgentrava ${MODE}\n${'─'.repeat(46)}`);
 
 // 1. dependencies
-if (!UNINSTALL) {
+if (!UNINSTALL && !MANUAL && !AUTO) {
   if (fs.existsSync(path.join(ROOT, 'node_modules', '@modelcontextprotocol'))) skip('dependencies already installed');
   else {
     process.stdout.write('  installing dependencies… ');
@@ -62,7 +68,9 @@ function findClaude() {
   return null;
 }
 const CLAUDE = findClaude();
-if (!CLAUDE) {
+if (MANUAL || AUTO) {
+  skip('MCP server left as it is');
+} else if (!CLAUDE) {
   warn('`claude` CLI not found — add this to your MCP client config yourself:');
   console.log(`      {"mcpServers":{"agentrava":{"command":"node","args":["${SERVER}"]}}}`);
 } else if (UNINSTALL) {
@@ -84,8 +92,8 @@ const settings = path.join(os.homedir(), '.claude', 'settings.json');
 const cfg = readJson(settings, {});
 const stop = (cfg.hooks ||= {}).Stop ||= [];
 const has = stop.some((e) => (e.hooks || []).some((h) => h.command === HOOK_CMD));
-if (UNINSTALL) {
-  if (!has) skip('no Stop hook to remove');
+if (UNINSTALL || MANUAL) {
+  if (!has) skip('no Stop hook to remove — already manual');
   else {
     const b = backup(settings);
     cfg.hooks.Stop = stop
@@ -131,7 +139,17 @@ if (WITH_CURSOR || UNINSTALL) {
 }
 
 console.log(`\n${'─'.repeat(46)}`);
-if (UNINSTALL) {
+if (MANUAL) {
+  console.log(`Manual mode. Nothing runs on its own now — log when you want to:
+
+  npm run log                    the session you are in
+  node scripts/card.mjs --best   your biggest session
+  node scripts/recap.js          season recap
+
+The MCP tools still work; ask for a snapshot in chat.
+Put automatic logging back with: npm run setup -- --auto
+`);
+} else if (UNINSTALL) {
   console.log(`Done. Your activities and cards are untouched in ~/.agentrava —\ndelete that directory yourself if you want them gone.\n`);
 } else {
   console.log(`Done. Restart Claude Code, then:
