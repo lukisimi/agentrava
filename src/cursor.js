@@ -16,10 +16,38 @@ export const DEFAULT_DB = path.join(os.homedir(),
 
 const NL = "length(x) - length(replace(x, char(10), ''))";   // line count, in SQL
 
+// Cursor's database is WAL-mode and usually has megabytes of uncommitted log
+// while the app runs. immutable=1 makes SQLite ignore the WAL entirely, which
+// hides the newest conversations — the very ones worth snapshotting — and throws
+// "malformed" when a checkpoint lands mid-read. mode=ro respects the WAL, and if
+// the live read still fails we snapshot the file set and read that instead.
+function run(target, sql) {
+  return execFileSync('sqlite3', [target, sql],
+    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 60000 });
+}
+
+let snapshotDir = null;
+function snapshotOf(db) {
+  if (snapshotDir) return path.join(snapshotDir, 'state.vscdb');
+  snapshotDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentrava-cursor-'));
+  for (const suffix of ['', '-wal', '-shm']) {
+    const src = db + suffix;
+    if (fs.existsSync(src)) fs.copyFileSync(src, path.join(snapshotDir, 'state.vscdb' + suffix));
+  }
+  process.once('exit', () => { try { fs.rmSync(snapshotDir, { recursive: true, force: true }); } catch {} });
+  return path.join(snapshotDir, 'state.vscdb');
+}
+
 function query(db, sql) {
-  // immutable=1 so a running Cursor is never locked or written to.
-  const out = execFileSync('sqlite3', [`file:${db}?mode=ro&immutable=1`, sql],
-    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 30000 });
+  let out;
+  try {
+    out = run(`file:${db}?mode=ro`, sql);
+  } catch (err) {
+    const msg = String(err.stderr || err.message || '');
+    if (!/malformed|locked|busy|disk image/i.test(msg)) throw err;
+    // Copy the db plus its -wal and -shm so the snapshot is internally consistent.
+    out = run(`file:${snapshotOf(db)}?mode=ro`, sql);
+  }
   return out.split('\n').filter(Boolean).map((r) => r.split('|'));
 }
 
@@ -157,4 +185,22 @@ export function parseCursorSession(conversationId, db = DEFAULT_DB) {
   const s = scanCursorDb(db).get(conversationId);
   if (!s) throw new Error('conversation not found');
   return s;
+}
+
+// Which project did this session mostly work in? The common prefix of every
+// touched path collapses to $HOME as soon as a thread spans two projects, so
+// count files per project root and take the winner.
+export function inferRepo(files, home = os.homedir()) {
+  const counts = new Map();
+  for (const f of files) {
+    if (!f.startsWith(home + path.sep)) continue;
+    const rel = f.slice(home.length + 1).split(path.sep);
+    const top = rel[0];
+    if (!top || top.startsWith('.')) continue;        // dotfiles are not projects
+    const root = path.join(home, top);
+    counts.set(root, (counts.get(root) || 0) + 1);
+  }
+  let best = null, n = 0;
+  for (const [root, c] of counts) if (c > n) { best = root; n = c; }
+  return best;
 }

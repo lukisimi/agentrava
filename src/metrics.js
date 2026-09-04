@@ -14,9 +14,12 @@ export const ACTIVITY_TYPES = {
   chore:     { verb: 'Chore Lap', icon: 'walk', color: '#8a94a6' },
 };
 
+// Each entry is the hour the label stops applying, matched with `h < cut`.
+// These were previously the *start* hours, which shifted every title one slot
+// late — 09:00 read as "Lunchtime" and 17:00 as "Night".
 const TIME_OF_DAY = [
-  [5, 'Early Morning'], [8, 'Morning'], [11, 'Lunchtime'], [14, 'Afternoon'],
-  [17, 'Evening'], [21, 'Night'], [24, 'Late Night'],
+  [8, 'Early Morning'], [11, 'Morning'], [14, 'Lunchtime'],
+  [17, 'Afternoon'], [21, 'Evening'], [24, 'Night'],
 ];
 
 export function autoTitle(type, date = new Date()) {

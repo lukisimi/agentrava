@@ -96,7 +96,10 @@ export function upsertBySession(sessionId, activity) {
   const i = db.activities.findIndex((a) => a.session_id && a.session_id === sessionId);
   const created = i < 0;
   if (created) db.activities.push(activity);
-  else db.activities[i] = { ...activity, id: db.activities[i].id, date: db.activities[i].date };
+  // Keep the id so the route stays the same trace, but take the new date: an
+  // activity is dated by when its work ended, which moves as the session grows.
+  else db.activities[i] = { ...activity, id: db.activities[i].id,
+                            date: activity.date || db.activities[i].date };
   save(db);
   return { created, activity: created ? activity : db.activities[i] };
   });

@@ -6,6 +6,8 @@
 //   node scripts/log-now.mjs --list       show the 15 most recent, newest first
 //   node scripts/log-now.mjs <id-prefix>  a specific session
 //   node scripts/log-now.mjs <path.jsonl> an explicit transcript
+//   node scripts/log-now.mjs --cursor     the Cursor conversation you are in
+//   node scripts/log-now.mjs --cursor <id-prefix>
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -48,7 +50,33 @@ async function cwdOf(file) {
   return process.cwd();
 }
 
-const arg = process.argv[2];
+const argv = process.argv.slice(2);
+const CURSOR = argv.includes('--cursor');
+const arg = argv.find((a) => !a.startsWith('--'));
+
+if (CURSOR) {
+  const { listConversations, parseCursorSession, inferRepo } = await import('../src/cursor.js');
+  const { storeSession } = await import('../src/session.js');
+  const { derive, fmtDuration } = await import('../src/metrics.js');
+
+  const convs = listConversations();
+  const conv = arg ? convs.find((c) => c.id.startsWith(arg)) : convs[0];
+  if (!conv) { console.error(arg ? `No Cursor conversation starting with "${arg}".` : 'No Cursor conversations found.'); process.exit(1); }
+
+  const stats = parseCursorSession(conv.id);
+  // Cursor has no working directory; infer the repo from the files it touched.
+  const cwd = inferRepo(stats.files) || '';
+
+  const r = await storeSession({ sessionId: conv.id, stats, cwd, client: 'cursor' });
+  if (r.skipped) { console.log(`Nothing logged for ${conv.id.slice(0, 8)} — ${r.skipped}.`); process.exit(0); }
+  const d = derive(r.activity);
+  console.log(`${r.activity.title}${r.activity.repo ? ' · ' + r.activity.repo : ''}  (Cursor)`);
+  console.log(`  ${d.distance_km.toFixed(2)} km · ${Math.round(d.elevation_m)} m · ${fmtDuration(r.activity.duration_seconds)} · ` +
+    `effort ${d.effort} · ${r.activity.tool_calls} tool calls · ${r.activity.files_changed} files`);
+  if (r.badges.length) console.log(`  ${r.badges.map((b) => b.name).join(', ')}`);
+  console.log(`\n${r.card}`);
+  process.exit(0);
+}
 const list = transcripts();
 if (!list.length) {
   console.error(`No transcripts under ${PROJECTS}`);

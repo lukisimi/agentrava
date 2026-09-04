@@ -226,7 +226,9 @@ export function storeSession({ sessionId, stats: s, cwd, drawCard = true, dry = 
     .filter(Boolean))].slice(0, 6);
 
   const activity = clean({
-    date: s.first ? new Date(s.first).toISOString() : undefined,
+    // A resumed thread can span months; date it by when the work actually
+    // ended, or a card for today's session is stamped with June.
+    date: s.last ? new Date(s.last).toISOString() : (s.first ? new Date(s.first).toISOString() : undefined),
     type: inferType(s, s.added - s.removed),
     model: s.model || dominantModel(s.models) || undefined,
     repo: repoName(cwd || s.cwd),
