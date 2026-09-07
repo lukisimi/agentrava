@@ -1,3 +1,23 @@
+export const PROFILE_SLICES = 72;
+
+// A real elevation profile is altitude over distance, so this is cumulative
+// climb: flat where the session ran smoothly, steep where files were being
+// written and errors recovered. Bucketing by moving time rather than wall-clock
+// keeps an idle gap from collapsing the session into one bar. Scaled 0-100, so
+// the last value is always 100 and the shape carries the information.
+export function buildProfile(events, movingMs) {
+  if (!events || events.length < 3 || !movingMs) return null;
+  const bins = new Array(PROFILE_SLICES).fill(0);
+  for (const e of events) {
+    const i = Math.min(PROFILE_SLICES - 1, Math.max(0, Math.floor((e.at / movingMs) * PROFILE_SLICES)));
+    bins[i] += e.gain;
+  }
+  let total = 0;
+  const cumulative = bins.map((v) => (total += v));
+  if (!total) return null;
+  return cumulative.map((v) => Math.round((v / total) * 100));
+}
+
 // Shared session parser: turns a Claude Code transcript into a logged activity.
 // Used by the Stop hook (one session, live) and by the backfill (all of them).
 import fs from 'node:fs';
@@ -86,6 +106,7 @@ async function parseTranscript(file) {
     toolCalls: 0, tokens: 0, errors: 0, files: new Set(),
     added: 0, removed: 0, first: null, last: null, moving: 0, prompt: '', cwd: '',
     shellFiles: new Set(), models: {},
+    events: [],   // { at: moving-ms so far, gain: elevation earned }
     tokIn: 0, tokOut: 0, tokCacheWrite: 0, tokCacheRead: 0, costUsd: 0,
   };
   // Strava auto-pauses when you stop moving; a resumed session otherwise clocks
@@ -107,6 +128,7 @@ async function parseTranscript(file) {
       if (s.last === null || ts > s.last) s.last = ts;
       if (prevTs !== null && ts > prevTs) s.moving += Math.min(ts - prevTs, GAP_CAP_MS);
       prevTs = ts;
+      s.atMoving = s.moving;   // position of anything recorded from this entry
     }
     if (!s.cwd && d.cwd) s.cwd = d.cwd;
 
@@ -136,7 +158,11 @@ async function parseTranscript(file) {
     const content = (d.message || {}).content;
     if (Array.isArray(content)) {
       for (const b of content) {
-        if (b && b.type === 'tool_result' && b.is_error) s.errors++;
+        if (b && b.type === 'tool_result' && b.is_error) {
+          s.errors++;
+          // Same weights as the elevation formula, so the profile's area is the climb.
+          s.events.push({ at: s.atMoving || 0, gain: 120 });
+        }
       }
     } else if (typeof content === 'string' && !s.prompt && !d.isMeta && !d.toolUseResult) {
       s.prompt = content.trim();
@@ -145,7 +171,10 @@ async function parseTranscript(file) {
     const r = d.toolUseResult;
     if (!r || typeof r !== 'object') continue;
     const fp = r.filePath || (r.file && r.file.filePath);
-    if (fp) s.files.add(fp);
+    if (fp) {
+      if (!s.files.has(fp)) s.events.push({ at: s.atMoving || 0, gain: 37 });
+      s.files.add(fp);
+    }
 
     if (Array.isArray(r.structuredPatch)) {
       for (const hunk of r.structuredPatch) {
@@ -244,6 +273,9 @@ export function storeSession({ sessionId, stats: s, cwd, drawCard = true, dry = 
     tokens_cache_write: s.tokCacheWrite || 0,
     tokens_cache_read: s.tokCacheRead || 0,
     cost_usd: s.costUsd || 0,
+    // Cursor builds its own profile during the scan; only compute here when the
+    // parser handed over raw events instead.
+    profile: s.profile || buildProfile(s.events, s.moving),
     errors_recovered: Math.min(s.errors, 20),
     edits_accepted: s.accepted || 0,
     edits_rejected: s.rejected || 0,

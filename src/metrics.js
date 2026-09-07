@@ -61,6 +61,7 @@ export function clean(input = {}) {
     notes: (Array.isArray(input.notes) ? input.notes : []).slice(0, 4).map((s) => String(s).slice(0, 80)),
     photo: input.photo ? String(input.photo) : undefined,
     model: input.model ? String(input.model).slice(0, 40) : undefined,
+    profile: Array.isArray(input.profile) && input.profile.length ? input.profile.map((v) => Math.max(0, Math.min(100, Math.round(Number(v) || 0)))) : undefined,
     client: input.client ? String(input.client).slice(0, 30) : undefined,
   };
 }

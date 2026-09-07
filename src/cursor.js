@@ -10,6 +10,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { dominantModel } from './models.js';
+import { buildProfile } from './session.js';
 
 export const DEFAULT_DB = path.join(os.homedir(),
   'Library', 'Application Support', 'Cursor', 'User', 'globalStorage', 'state.vscdb');
@@ -55,6 +56,11 @@ const J = (p) => `json_extract(value,'$.${p}')`;
 // rawArgs is not always valid JSON — a streamed edit can be cut off mid-write, and
 // json_extract aborts the entire query on the first malformed row. Guard every read.
 const RAW = J('toolFormerData.rawArgs');
+// Only these actually change a file. Counting every tool that carries a path
+// credited reads as edits, which inflated files_changed and so elevation.
+const EDIT_TOOLS = ['edit_file_v2', 'search_replace', 'write', 'apply_patch',
+                    'create_file', 'MultiEdit', 'str_replace_editor'];
+const IS_EDIT = `${J('toolFormerData.name')} IN (${EDIT_TOOLS.map((t) => `'${t}'`).join(',')})`;
 const ARG = (k) => `(CASE WHEN json_valid(${RAW}) THEN json_extract(${RAW},'$.${k}') END)`;
 
 // One grouped pass over the whole table. Per-conversation `LIKE 'bubbleId:<id>:%'`
@@ -62,6 +68,26 @@ const ARG = (k) => `(CASE WHEN json_valid(${RAW}) THEN json_extract(${RAW},'$.${
 // times out; this scans once and returns every conversation at once.
 // Which model drove each conversation. Most bubbles record "default", so only the
 // named ones count — about a sixth of conversations end up with real gear.
+// Where the climbing happened, for the elevation profile. Cursor has no
+// per-file first-touch signal in one pass, so an edit call stands in for a file
+// touched; errors carry the same weight as elsewhere.
+function scanClimb(db) {
+  const out = new Map();
+  for (const [c, at, err, edit] of query(db, `
+    SELECT substr(key,10,36) c, ${J('createdAt')},
+           ${J('toolFormerData.status')}='error',
+           ${IS_EDIT}
+    FROM cursorDiskKV
+    WHERE key LIKE 'bubbleId:%' AND ${J('toolFormerData.name')} IS NOT NULL
+      AND ${J('createdAt')} IS NOT NULL;`)) {
+    const gain = (err === '1' ? 120 : 0) + (edit === '1' ? 37 : 0);
+    if (!gain) continue;
+    if (!out.has(c)) out.set(c, []);
+    out.get(c).push({ t: Date.parse(at), gain });
+  }
+  return out;
+}
+
 function scanModels(db) {
   const out = new Map();
   for (const [c, m, n] of query(db, `
@@ -126,7 +152,7 @@ function scanFiles(db) {
   const out = new Map();
   for (const [c, p] of query(db, `
       SELECT DISTINCT substr(key,10,36), coalesce(${ARG('path')}, ${ARG('file_path')})
-      FROM cursorDiskKV WHERE key LIKE 'bubbleId:%' AND ${RAW} IS NOT NULL;`)) {
+      FROM cursorDiskKV WHERE key LIKE 'bubbleId:%' AND ${RAW} IS NOT NULL AND ${IS_EDIT};`)) {
     if (!p || !p.startsWith('/')) continue;
     if (!out.has(c)) out.set(c, new Set());
     out.get(c).add(p);
@@ -156,6 +182,7 @@ export function scanCursorDb(db = DEFAULT_DB) {
   if (!fs.existsSync(db)) throw new Error(`no Cursor database at ${db}`);
   const bubbles = scanBubbles(db);
   const models = scanModels(db);
+  const climbs = scanClimb(db);
   const diffs = scanDiffs(db);
   const files = scanFiles(db);
   const times = scanTimes(db);
@@ -167,6 +194,18 @@ export function scanCursorDb(db = DEFAULT_DB) {
     for (let i = 1; i < ts.length; i++) moving += Math.min(ts[i] - ts[i - 1], 300_000);
     const d = diffs.get(id) || { added: 0, removed: 0 };
     b.model = dominantModel(models.get(id) || {});
+    // Position each climb event by moving time, matching the Claude Code path.
+    const raw = (climbs.get(id) || []).filter((e) => !Number.isNaN(e.t)).sort((x, y) => x.t - y.t);
+    if (raw.length >= 3 && ts.length) {
+      let acc = 0, prev = null, k = 0;
+      const events = [];
+      for (const t of ts) {
+        if (prev !== null && t > prev) acc += Math.min(t - prev, 300_000);
+        prev = t;
+        while (k < raw.length && raw[k].t <= t) { events.push({ at: acc, gain: raw[k].gain }); k++; }
+      }
+      b.profile = buildProfile(events, acc);
+    }
     out.set(id, {
       ...b, moving,
       files: files.get(id) || new Set(),

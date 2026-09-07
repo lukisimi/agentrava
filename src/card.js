@@ -103,15 +103,13 @@ function fitPoints(pts, box) {
 const pathOf = (pts) => pts.map(([x, y], i) =>
   `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
 
+// Draws the activity's recorded climb. Returns null when the session has no
+// profile — an invented curve under a label reading ELEVATION PROFILE is a lie,
+// so those cards get no strip at all.
 function elevationPath(a, box) {
-  const r = rng(hash(a.id + 'elev'));
-  const n = 72, vals = [];
-  let v = 0.4;
-  for (let i = 0; i < n; i++) {
-    // Mean-reverting, or the walk pins itself to the ceiling and draws a brick.
-    v += (r() - 0.5) * 0.26 + (0.45 - v) * 0.13 + Math.sin(i / 6.5) * 0.05;
-    vals.push(Math.min(0.95, Math.max(0.08, v)));
-  }
+  if (!Array.isArray(a.profile) || a.profile.length < 4) return null;
+  const vals = a.profile.map((v) => 0.06 + (Math.max(0, Math.min(100, v)) / 100) * 0.88);
+  const n = vals.length;
   const step = box.w / (n - 1);
   const line = vals.map((val, i) =>
     `${i ? 'L' : 'M'}${(box.x + i * step).toFixed(1)} ${(box.y + box.h - val * box.h).toFixed(1)}`).join(' ');
@@ -263,10 +261,10 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
     <circle cx="${start[0].toFixed(1)}" cy="${start[1].toFixed(1)}" r="11" fill="#26c281" stroke="${C.panel}" stroke-width="4"/>
     <circle cx="${end[0].toFixed(1)}" cy="${end[1].toFixed(1)}" r="11" fill="${C.ink}" stroke="${C.panel}" stroke-width="4"/>
     ${photo ? `<rect x="${mapBox.x}" y="${elevBox.y - 90}" width="${mapBox.w}" height="${mapBox.h - (elevBox.y - 90 - mapBox.y)}" fill="url(#photoscrim)"/>` : ''}
-    <line x1="${mapBox.x + 30}" y1="${elevBox.y - 22}" x2="${mapBox.x + mapBox.w - 30}" y2="${elevBox.y - 22}" stroke="#ffffff" stroke-opacity="${photo ? 0.16 : 0.07}"/>
+    ${elev ? `<line x1="${mapBox.x + 30}" y1="${elevBox.y - 22}" x2="${mapBox.x + mapBox.w - 30}" y2="${elevBox.y - 22}" stroke="#ffffff" stroke-opacity="${photo ? 0.16 : 0.07}"/>
     <path d="${elev.area}" fill="url(#elevfill)"/>
     <path d="${elev.line}" fill="none" stroke="${accent}" stroke-opacity="0.85" stroke-width="2.5"/>
-    <text x="${mapBox.x + 30}" y="${elevBox.y - 34}" fill="${photo ? '#ffffff' : C.dim}" fill-opacity="${photo ? 0.72 : 1}" font-size="16" font-weight="600" letter-spacing="1.4">ELEVATION PROFILE</text>
+    <text x="${mapBox.x + 30}" y="${elevBox.y - 34}" fill="${photo ? '#ffffff' : C.dim}" fill-opacity="${photo ? 0.72 : 1}" font-size="16" font-weight="600" letter-spacing="1.4">CLIMB · ${Math.round(d.elevation_m).toLocaleString('en-US')} m</text>` : ''}
   </g>
 
   <!-- headline stats -->

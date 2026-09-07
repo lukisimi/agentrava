@@ -336,6 +336,31 @@ output, 373M cache writes and 17.2 **billion** cache reads — 98% of all tokens
 are cache reads, which is why they dominate the cost even at a tenth of the input
 rate.
 
+## The climb profile
+
+The strip under the route is the session's **cumulative climb**: flat where it
+ran smoothly, stepping up wherever a file was written or an error recovered,
+bucketed by moving time so an idle gap doesn't collapse the session into one bar.
+The area under it is the elevation figure on the card.
+
+It was decoration until it wasn't. The original version was a seeded random walk
+that read no session data at all — the same label over pure noise. If a session
+has fewer than three climb events, the strip is **omitted entirely** rather than
+drawn from nothing; 81% of sessions have one.
+
+### Cursor under-reports files changed
+
+Cursor stores the arguments for only 477 of 15,142 `edit_file_v2` calls — the
+rest have empty `rawArgs`, and the result holds content hashes, not paths. So
+**which file an edit touched is usually not recoverable**, and `files_changed`
+counts only the subset that is.
+
+This was worse before: the parser took a path from *any* tool carrying one,
+including `read_file_v2`, so files the agent merely opened counted as changed and
+inflated elevation (median Cursor elevation was 555 m; measuring only real edits
+it is 120 m). Under-reporting something unmeasurable is better than inflating it,
+so Cursor elevation is now driven mainly by errors, which it does record reliably.
+
 ## Photos
 
 Strava lets you put your ride photo behind the route. So does this.
