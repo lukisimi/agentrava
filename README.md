@@ -44,6 +44,7 @@ Any MCP client works — it speaks stdio:
 
 ## Tools
 
+- **`agentrava`** — start here: every tool with an example, plus your totals and streak.
 - **`snapshot`** — card for the session in progress, measured from the live transcript.
   Takes `photo` (`"chat"` uses an image you just pasted) and `title` to rename it inline.
 - **`log_activity`** — log a session by hand; unreported fields count as zero.
@@ -319,7 +320,8 @@ node scripts/rename.mjs project API --hide                # keep it off every ca
 ```
 
 Or from chat: `rename_session`, `rename_project`, `list_projects`. Every card
-result also ends with a **Next:** line naming the options that apply to it —
+result ends with the options that apply to it, phrased for the assistant to put
+to you —
 adding a photo, renaming, or hiding project names before you share. Affected cards
 are redrawn immediately — changing a name in a table does nothing to a PNG
 already on disk.

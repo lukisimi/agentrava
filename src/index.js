@@ -61,6 +61,15 @@ const TOOLS = [
     inputSchema: LOG_SCHEMA,
   },
   {
+    name: 'agentrava',
+    title: 'What Agentrava can do',
+    description:
+      'Start here. Lists every Agentrava tool with a one-line example, plus the current athlete, ' +
+      'totals and streak. Call this whenever the user says just "agentrava", asks what it can do, ' +
+      'or seems unsure which card they want.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
     name: 'snapshot',
     title: 'Snapshot the current session',
     description:
@@ -282,9 +291,9 @@ async function snapshot({ session, photo, title } = {}) {
     r.badges.length ? `Achievements: ${r.badges.map((b) => b.name).join(', ')}` : 'No badges yet.',
     `Card: ${card}`,
     nextSteps([
-      shown.photo ? 'photo: "chat" to swap the background for an image you paste' : 'photo: "chat" to put an image you paste behind the route',
-      'title: "…" to rename this session (rename_session with reset undoes it)',
-      shown.project_name && !shown.project_hidden ? `rename_project "${shown.project_name}" — or hidden: true to keep it off the card` : '',
+      shown.photo ? 'swap the background image (photo: "chat" uses one they paste here)' : 'put an image behind the route (photo: "chat" uses one they paste here)',
+      'rename this session (title, or rename_session with reset to undo)',
+      shown.project_name && !shown.project_hidden ? `rename or hide the project "${shown.project_name}" (rename_project)` : '',
     ]),
   ].filter(Boolean);
 
@@ -314,7 +323,9 @@ function setAthlete({ name } = {}) {
 // are discoverable without reading the README.
 const nextSteps = (items) => {
   const list = items.filter(Boolean);
-  return list.length ? `\nNext: ${list.join(' · ')}` : '';
+  // Phrased as an offer, because the point is for the assistant to ask rather
+  // than leave the options sitting unread in a tool result.
+  return list.length ? `\nOffer the user: ${list.join(' · ')}` : '';
 };
 
 function snap(kind, { period, title, hide_projects: hideProjects = false, pick } = {}) {
@@ -338,16 +349,45 @@ function snap(kind, { period, title, hide_projects: hideProjects = false, pick }
     s.feature ? `${s.feature.selected ? "Pick" : 'Longest session'}: ${s.feature.activity.title} · ${fmtHM(s.feature.seconds)}` : 'No recorded sessions.',
     `Card: ${pngPath || svgPath}`,
     nextSteps([
-      s.projectCount && !hideProjects ? 'hide_projects: true to replace project names before sharing' : '',
-      s.projectCount ? 'rename_project to relabel one' : '',
-      kind === 'month' && s.feature && !s.feature.selected ? 'pick: <session id> to feature a different session' : '',
-      title ? '' : 'title: "…" for your own headline',
-      period ? '' : `period: "${kind === 'week' ? 'last7' : 'last30'}" for a rolling window, or "last" for the previous ${kind}`,
+      s.projectCount && !hideProjects ? 'rename or hide a project name before sharing (rename_project · hide_projects)' : '',
+      kind === 'month' && s.feature && !s.feature.selected ? 'feature a different session (pick)' : '',
+      title ? '' : 'write their own headline (title)',
+      period ? '' : `a rolling window instead of a part-finished ${kind} (period: "${kind === 'week' ? 'last7' : 'last30'}")`,
     ]),
   ];
   const content = [{ type: 'text', text: lines.join('\n') }];
   if (png) content.push({ type: 'image', data: png.toString('base64'), mimeType: 'image/png' });
   return { content };
+}
+
+function menu() {
+  const acts = presentAll();
+  const projects = listProjects(acts);
+  const latest = acts.slice().sort((a, b) => Date.parse(b.date) - Date.parse(a.date))[0];
+  const you = config().athlete || 'Athlete (set one with set_athlete)';
+
+  return text([
+    `AGENTRAVA — ${you} · ${acts.length} activities · ${streak(acts)}-day streak · ${projects.length} projects`,
+    latest ? `Last logged: ${latest.title}${latest.project_name ? ' · ' + latest.project_name : ''} (${new Date(latest.date).toLocaleDateString('en-CA')})` : 'Nothing logged yet.',
+    '',
+    'MAKE A CARD',
+    '  snapshot            the session running right now, measured from its transcript',
+    '  weekly_snap         a week — period: "this" | "last" | "last7" (rolling, always complete)',
+    '  monthly_snap        a month — period: "this" | "last" | "last30" | "2026-08"',
+    '  recap               everything logged, or a from/to range',
+    '',
+    'BEFORE YOU SHARE',
+    '  photo: "chat"       put an image you paste into this chat behind the route (snapshot)',
+    '  title: "…"          your own headline or session name',
+    '  rename_session      rename a session; reset: true restores the generated one',
+    '  rename_project      rename a project, or hidden: true to keep its name off cards',
+    '  hide_projects       one-off: show "Project A/B" on a snap instead of real names',
+    '',
+    'LOOK BACK',
+    '  get_profile · list_activities · leaderboard · list_projects',
+    '',
+    'Ask the user which they want if it is not obvious from what they said.',
+  ].join('\n'));
 }
 
 function renameSessionTool({ session, title, reset } = {}) {
@@ -463,6 +503,7 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       case 'log_activity':    return logActivity(args);
       case 'get_profile':     return getProfile(args);
       case 'recap':           return recap(args);
+      case 'agentrava':       return menu();
       case 'rename_session':  return renameSessionTool(args);
       case 'rename_project':  return renameProjectTool(args);
       case 'list_projects':   return listProjectsTool();
