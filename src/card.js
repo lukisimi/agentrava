@@ -324,7 +324,7 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
 
   <!-- footer -->
   <line x1="${P}" y1="1252" x2="${W - P}" y2="1252" stroke="#ffffff" stroke-opacity="0.08"/>
-  <text x="${P}" y="1302" fill="${C.brand}" font-size="30" font-weight="700" letter-spacing="4">AGENTRAVA</text>
+  <text x="${P}" y="1302" fill="${C.ink}" font-size="30" font-weight="700" letter-spacing="4">AGENTRAVA</text>
   <text x="${W - P}" y="1302" fill="${C.label}" font-size="22" text-anchor="end">${esc(fit(footerLine(a),
     // Clamp to the space left of the AGENTRAVA wordmark, or the two collide.
     22, W - 2 * P - 268))}</text>

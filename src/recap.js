@@ -143,7 +143,7 @@ export function renderRecap(activities, { athlete, title = '' } = {}) {
   <rect width="${W}" height="${H}" fill="url(#bg)"/>
   <rect x="0" y="0" width="${W}" height="8" fill="${ACCENT}"/>
 
-  <text x="${P}" y="${96}" fill="${ACCENT}" font-size="26" font-weight="700" letter-spacing="4">AGENTRAVA</text>
+  <text x="${P}" y="${96}" fill="${C.ink}" font-size="26" font-weight="700" letter-spacing="4">AGENTRAVA</text>
   <text x="${W - P}" y="${96}" fill="${C.muted}" font-size="21" text-anchor="end">${esc(period)}</text>
 
   <text x="${P}" y="${196}" fill="${C.ink}" font-size="58" font-weight="700" letter-spacing="-1.2">${esc(title || `${acts.length} Activities`)}</text>
