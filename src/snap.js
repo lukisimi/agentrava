@@ -6,6 +6,7 @@ import { C, esc, charW, fit } from './card.js';
 import { fmtUsd } from './pricing.js';
 import { fmtHM } from './summary.js';
 import { config } from './store.js';
+import { avatarSvg } from './avatar.js';
 
 const W = 1080, H = 1350, P = 64;
 const ACCENT = '#ff3b7f';
@@ -24,8 +25,7 @@ function frame(inner, { athlete, sub, kind, partial }) {
   </defs>
   <rect width="${W}" height="${H}" fill="url(#bg)"/>
   <rect width="${W}" height="8" fill="${ACCENT}"/>
-  <circle cx="${P + 33}" cy="103" r="33" fill="${ACCENT}" fill-opacity="0.18" stroke="${ACCENT}" stroke-opacity="0.5" stroke-width="2"/>
-  <text x="${P + 33}" y="114" fill="${ACCENT}" font-size="32" font-weight="700" text-anchor="middle">${initial}</text>
+  ${avatarSvg({ cx: P + 33, cy: 103, r: 33, initial, accent: ACCENT, ink: C.ink, id: 'avatar' })}
   <text x="${P + 84}" y="95" fill="${C.ink}" font-size="29" font-weight="700">${esc(fit(athlete, 29, 470, true))}</text>
   <text x="${P + 84}" y="127" fill="${C.muted}" font-size="21">${esc(sub)}</text>
   <text x="${W - P}" y="98" fill="${C.label}" font-size="19" font-weight="700" letter-spacing="2" text-anchor="end">${kind}</text>

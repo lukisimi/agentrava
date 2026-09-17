@@ -8,6 +8,7 @@ import {
 import fs from 'node:fs';
 import { append, all, load, save, config, setConfig, presentAll, setOverride } from './store.js';
 import { renameSession, renameProject, listProjects, describeProject } from './names.js';
+import { setAvatar } from './avatar.js';
 import { redrawCards } from './redraw.js';
 import { clean, derive, fmtDuration, fmtPace, fmtNum, ACTIVITY_TYPES } from './metrics.js';
 import { badgesFor, prsFor, streak } from './achievements.js';
@@ -94,7 +95,9 @@ const TOOLS = [
       'Ask the user what they want; do not guess a name from their email or filesystem.',
     inputSchema: { type: 'object', properties: {
       name: { type: 'string', description: 'Display name, first name or full name. Max 40 characters.' },
-    }, required: ['name'], additionalProperties: false },
+      avatar: { type: 'string', description: 'Profile picture for the circle on every card: a local image path, or "chat" to use an image the user just pasted. Square images look best.' },
+      avatar_reset: { type: 'boolean', description: 'Remove the picture and go back to the initial.' },
+    }, additionalProperties: false },
   },
   {
     name: 'get_profile',
@@ -304,7 +307,18 @@ async function snapshot({ session, photo, title } = {}) {
   return { content };
 }
 
-function setAthlete({ name } = {}) {
+function setAthlete({ name, avatar, avatar_reset: avatarReset } = {}) {
+  // Avatar first: it can be set on its own, without renaming.
+  if (avatar !== undefined || avatarReset) {
+    try {
+      const t = resolveTranscript(null);
+      const dest = setAvatar(avatarReset ? null : avatar, t && t.file);
+      const drawn = redrawCards().length;
+      const msg = dest ? `Avatar set. Redrew ${drawn} cards.` : `Avatar removed — cards show the initial again. Redrew ${drawn} cards.`;
+      if (name === undefined) return text(msg);
+      var avatarNote = '\n' + msg;
+    } catch (err) { return text(`Avatar failed: ${err.message}`); }
+  }
   const clean = String(name || '').trim().slice(0, 40);
   if (!clean) return text('Give a name, e.g. set_athlete with name "Ada".');
   const previous = config().athlete || '(unset)';
@@ -316,7 +330,8 @@ function setAthlete({ name } = {}) {
   for (const a of db.activities) { if (a.athlete !== clean) { a.athlete = clean; n++; } }
   save(db);
   return text(`Athlete set to "${clean}" (was ${previous}). Updated ${n} stored ` +
-    `activit${n === 1 ? 'y' : 'ies'} — run \`node scripts/rerender.js\` to redraw the cards.`);
+    `activit${n === 1 ? 'y' : 'ies'} — run \`node scripts/rerender.js\` to redraw the cards.` +
+    (typeof avatarNote === 'string' ? avatarNote : ''));
 }
 
 // Card results end with the options that apply to that card, so the follow-ups
@@ -378,6 +393,7 @@ function menu() {
     '',
     'BEFORE YOU SHARE',
     '  photo: "chat"       put an image you paste into this chat behind the route (snapshot)',
+    '  set_athlete         your name, and avatar: "chat" for the picture in the circle',
     '  title: "…"          your own headline or session name',
     '  rename_session      rename a session; reset: true restores the generated one',
     '  rename_project      rename a project, or hidden: true to keep its name off cards',

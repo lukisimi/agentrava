@@ -302,8 +302,18 @@ bike. The model is gear, shown under the title with the client:
 `Claude Opus 5 · Cursor`.
 
 ```bash
-node scripts/whoami.mjs "Your Name"   # set the name on every card, past and future
+node scripts/whoami.mjs "Your Name"        # the name on every card, past and future
+node scripts/whoami.mjs --avatar ~/me.jpg  # a picture for the circle
+node scripts/whoami.mjs --avatar chat      # use an image you just pasted into the chat
+node scripts/whoami.mjs --no-avatar        # back to the initial
+node scripts/whoami.mjs                    # show both
 ```
+
+The avatar replaces the initial in the circle on every card and snap, clipped to
+the circle. It is copied into `~/.agentrava/avatars/` on set, so moving or
+deleting the original does not blank your cards, and it is swappable any time —
+setting a new one redraws everything. `set_athlete` takes `avatar` and
+`avatar_reset` for the same thing from chat.
 
 `set_athlete` does the same from chat. Unset, cards read "Athlete" — the safe
 default for sharing.

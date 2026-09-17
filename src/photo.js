@@ -27,9 +27,10 @@ export function latestPastedImage(transcriptPath, outDir) {
     if (d.type !== 'user') continue;                     // only what the human sent
     const content = (d.message || {}).content;
     if (!Array.isArray(content)) continue;
-    for (const b of content) {
-      const src = b && b.type === 'image' ? b.source : null;
-      if (!src || src.type !== 'base64' || !src.data) continue;
+    const images = content.filter((b) => b && b.type === 'image' && b.source
+      && b.source.type === 'base64' && b.source.data);
+    for (const b of images.slice(-1)) {
+      const src = b.source;
       const ext = EXT[src.media_type] || '.png';
       const buf = Buffer.from(src.data, 'base64');
       fs.mkdirSync(outDir, { recursive: true });

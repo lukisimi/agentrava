@@ -1,6 +1,7 @@
 import { ACTIVITY_TYPES, derive, fmtDuration, fmtPace, fmtNum } from './metrics.js';
 import { clientInfo } from './clients.js';
 import { fmtUsd } from './pricing.js';
+import { avatarSvg } from './avatar.js';
 
 const W = 1080, H = 1350, P = 64;
 export const C = {
@@ -269,9 +270,7 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
   <rect x="0" y="0" width="${W}" height="8" fill="${accent}"/>
 
   <!-- header -->
-  <circle cx="${P + 33}" cy="103" r="33" fill="${accent}" fill-opacity="0.18"/>
-  <circle cx="${P + 33}" cy="103" r="33" fill="none" stroke="${accent}" stroke-opacity="0.5" stroke-width="2"/>
-  <text x="${P + 33}" y="114" fill="${accent}" font-size="32" font-weight="700" text-anchor="middle">${esc(a.athlete.slice(0, 1).toUpperCase())}</text>
+  ${avatarSvg({ cx: P + 33, cy: 103, r: 33, initial: esc(a.athlete.slice(0, 1).toUpperCase()), accent, ink: C.ink, id: 'avatar' })}
   <text x="${P + 84}" y="95" fill="${C.ink}" font-size="29" font-weight="700">${esc(fit(a.athlete, 29, 500, true))}</text>
   <text x="${P + 84}" y="127" fill="${C.muted}" font-size="21">${esc(fit(subtitle, 21, 700))}</text>
   <text x="${W - P}" y="98" fill="${C.label}" font-size="19" font-weight="700" letter-spacing="2" text-anchor="end">${esc(a.type.toUpperCase())}</text>
