@@ -32,8 +32,8 @@ function frame(inner, { athlete, sub, kind, partial }) {
   ${partial ? `<text x="${W - P}" y="127" fill="${ACCENT}" font-size="18" font-weight="700" letter-spacing="1.5" text-anchor="end">${partial}</text>` : ''}
   ${inner}
   <line x1="${P}" y1="1252" x2="${W - P}" y2="1252" stroke="#ffffff" stroke-opacity="0.08"/>
-  <text x="${P}" y="1302" fill="${C.ink}" font-size="30" font-weight="700" letter-spacing="4">AGENTRAVA</text>
-  <text x="${W - P}" y="1302" fill="${C.label}" font-size="19" text-anchor="end">Recorded activity · Not a productivity score</text>
+  <text x="${P}" y="1302" fill="${C.label}" font-size="19">Recorded activity · Not a productivity score</text>
+  <text x="${W - P}" y="1302" fill="${C.ink}" font-size="30" font-weight="700" letter-spacing="4" text-anchor="end">AGENTRAVA</text>
 </svg>`;
 }
 
