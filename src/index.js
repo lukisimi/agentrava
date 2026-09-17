@@ -143,7 +143,7 @@ const TOOLS = [
       'marked "this week so far". Agent time is summed across sessions, so parallel agents can ' +
       'exceed 24h a day — say so if you repeat the numbers.',
     inputSchema: { type: 'object', properties: {
-      period: { type: 'string', description: 'this (default), last, or a date YYYY-MM-DD inside the period.' },
+      period: { type: 'string', description: 'this (default) for the calendar week so far, last for the previous one, last7 for a rolling seven days ending today (always complete — better for sharing mid-week), or a date YYYY-MM-DD inside the week.' },
       title: { type: 'string', description: 'Replace the headline, e.g. "What I shipped". Never inferred.' },
       hide_projects: { type: 'boolean', description: 'Swap project names for Project A/B/C before sharing.' },
     }, additionalProperties: false },
@@ -156,7 +156,7 @@ const TOOLS = [
       'active days, projects by time, and a featured session. The feature is labelled "Month\'s pick" ' +
       'only when the user chose it via `pick`; otherwise it is the longest session, labelled as such.',
     inputSchema: { type: 'object', properties: {
-      period: { type: 'string', description: 'this (default), last, or a date YYYY-MM-DD inside the period, or YYYY-MM.' },
+      period: { type: 'string', description: 'this (default) for the calendar month so far, last for the previous one, last30 (or 14d, 90d…) for a rolling window ending today, or YYYY-MM / YYYY-MM-DD.' },
       title: { type: 'string', description: 'Replace the headline, e.g. "What I shipped". Never inferred.' },
       hide_projects: { type: 'boolean', description: 'Swap project names for Project A/B/C before sharing.' },
       pick: { type: 'string', description: 'Session or activity id the user chose to feature. Only pass one the user named.' },
@@ -246,7 +246,7 @@ function recap({ from, to, title, athlete } = {}) {
   return { content };
 }
 
-async function snapshot({ session, photo } = {}) {
+async function snapshot({ session, photo, title } = {}) {
   const t = resolveTranscript(session);
   if (!t) return text(session ? `No session matching "${session}".` : 'No Claude Code transcripts found.');
 
@@ -264,6 +264,10 @@ async function snapshot({ session, photo } = {}) {
       card = redrawCards((a) => a.id === r.stored.id)[0] || card;
     } catch (err) { return text(`Photo failed: ${err.message}`); }
   }
+  if (title !== undefined) {
+    try { renameSession(r.stored.id, title); card = redrawCards((a) => a.id === r.stored.id)[0] || card; }
+    catch (err) { return text(err.message); }
+  }
   const shown = presentAll([{ ...r.activity, id: r.stored.id }])[0];
 
   const d = derive(r.activity);
@@ -277,6 +281,11 @@ async function snapshot({ session, photo } = {}) {
     r.prs.length ? `🥇 Personal record: ${r.prs.map((p) => p.name).join(', ')}` : '',
     r.badges.length ? `Achievements: ${r.badges.map((b) => b.name).join(', ')}` : 'No badges yet.',
     `Card: ${card}`,
+    nextSteps([
+      shown.photo ? 'photo: "chat" to swap the background for an image you paste' : 'photo: "chat" to put an image you paste behind the route',
+      'title: "…" to rename this session (rename_session with reset undoes it)',
+      shown.project_name && !shown.project_hidden ? `rename_project "${shown.project_name}" — or hidden: true to keep it off the card` : '',
+    ]),
   ].filter(Boolean);
 
   const content = [{ type: 'text', text: lines.join('\n') }];
@@ -301,6 +310,13 @@ function setAthlete({ name } = {}) {
     `activit${n === 1 ? 'y' : 'ies'} — run \`node scripts/rerender.js\` to redraw the cards.`);
 }
 
+// Card results end with the options that apply to that card, so the follow-ups
+// are discoverable without reading the README.
+const nextSteps = (items) => {
+  const list = items.filter(Boolean);
+  return list.length ? `\nNext: ${list.join(' · ')}` : '';
+};
+
 function snap(kind, { period, title, hide_projects: hideProjects = false, pick } = {}) {
   let bounds;
   try { bounds = resolvePeriod(kind, period); } catch (err) { return text(err.message); }
@@ -308,17 +324,26 @@ function snap(kind, { period, title, hide_projects: hideProjects = false, pick }
   if (pick && !(s.feature && s.feature.selected)) return text(`No session matching "${pick}" in that ${kind}.`);
 
   const svg = kind === 'week' ? renderWeekly(s, { title, hideProjects }) : renderMonthly(s, { title, hideProjects });
-  const key = ['snap', kind, dayKey(bounds.start.getTime()), hideProjects ? 'anon' : '', title ? 'titled' : '']
+  const key = ['snap', kind, dayKey(bounds.start.getTime()), bounds.rolling ? `r${bounds.rolling}` : '', hideProjects ? 'anon' : '', title ? 'titled' : '']
     .filter(Boolean).join('-');
   const { pngPath, svgPath, png } = writeCard(key, svg);
 
   const lines = [
-    `${kind === 'week' ? 'Week' : 'Month'} of ${dayKey(bounds.start.getTime())}${s.partial ? ' (so far)' : ''}`,
+    bounds.rolling
+      ? `Last ${bounds.rolling} days to ${dayKey(Date.now())}`
+      : `${kind === 'week' ? 'Week' : 'Month'} of ${dayKey(bounds.start.getTime())}${s.partial ? ' (so far)' : ''}`,
     `${s.sessions} sessions · ${s.activeDays} active days · ${s.projectCount} projects · ${fmtHM(s.moving)} agent time (summed across parallel sessions)`,
     `${s.toolCalls.toLocaleString('en-US')} tool calls · ${s.costCoverage.priced ? 'est. ' + fmtUsd(s.cost) : 'no cost recorded'}` +
       (s.costCoverage.priced < s.costCoverage.of ? ` (partial: ${s.costCoverage.priced} of ${s.costCoverage.of} sessions priced)` : ''),
     s.feature ? `${s.feature.selected ? "Pick" : 'Longest session'}: ${s.feature.activity.title} · ${fmtHM(s.feature.seconds)}` : 'No recorded sessions.',
     `Card: ${pngPath || svgPath}`,
+    nextSteps([
+      s.projectCount && !hideProjects ? 'hide_projects: true to replace project names before sharing' : '',
+      s.projectCount ? 'rename_project to relabel one' : '',
+      kind === 'month' && s.feature && !s.feature.selected ? 'pick: <session id> to feature a different session' : '',
+      title ? '' : 'title: "…" for your own headline',
+      period ? '' : `period: "${kind === 'week' ? 'last7' : 'last30'}" for a rolling window, or "last" for the previous ${kind}`,
+    ]),
   ];
   const content = [{ type: 'text', text: lines.join('\n') }];
   if (png) content.push({ type: 'image', data: png.toString('base64'), mimeType: 'image/png' });

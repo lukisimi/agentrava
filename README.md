@@ -45,10 +45,12 @@ Any MCP client works — it speaks stdio:
 ## Tools
 
 - **`snapshot`** — card for the session in progress, measured from the live transcript.
+  Takes `photo` (`"chat"` uses an image you just pasted) and `title` to rename it inline.
 - **`log_activity`** — log a session by hand; unreported fields count as zero.
 - **`recap`** — one card for a whole period: totals, activity heatmap, hour-of-day
   histogram, trophy case, longest streak, biggest session. Optional `from` / `to`.
 - **`weekly_snap`** · **`monthly_snap`** — a week or a month on one card, same size as a session card.
+  Take `period` (`this`, `last`, `last7` / `last30`, or a date), `title`, `hide_projects`, and `pick`.
 - **`get_profile`** — career totals, streak, personal records, trophy case.
 - **`rename_session`** · **`rename_project`** · **`list_projects`** — your own names, kept across re-logs.
 - **`list_activities`** · **`leaderboard`** · **`set_athlete`**
@@ -121,12 +123,21 @@ events now get **no strip at all** rather than an invented one. 81% have a profi
 ## Weekly and Monthly Snap
 
 ```bash
-node scripts/snap.mjs week                 # this week so far
-node scripts/snap.mjs week last
-node scripts/snap.mjs month 2026-08
+node scripts/snap.mjs week                 # this calendar week so far
+node scripts/snap.mjs week last            # the previous calendar week
+node scripts/snap.mjs week last7           # rolling seven days, ending today
+node scripts/snap.mjs month                # this calendar month so far
+node scripts/snap.mjs month last30         # rolling thirty days (14d, 90d… also work)
 node scripts/snap.mjs month 2026-08 --pick 086f7bf6   # feature a session you chose
 node scripts/snap.mjs week --title "Shipped the new onboarding" --hide-projects
 ```
+
+**Calendar or rolling.** A calendar week shared on a Wednesday is a stub — it
+says "this week so far" and two days are empty. `last7` and `last30` are always
+whole windows ending today, which is usually what you want to post. Calendar
+periods stay the default because streaks, months and heatmaps are calendar
+things. Rolling cards label themselves by range and by weekday, since a rolling
+week does not start on a Monday.
 
 Both are **1080×1350, the same frame as a session card**, so a snap and a card sit
 side by side in a feed. A six-row month is the tightest case and still clears the
@@ -307,7 +318,9 @@ node scripts/rename.mjs project API --reset
 node scripts/rename.mjs project API --hide                # keep it off every card
 ```
 
-Or from chat: `rename_session`, `rename_project`, `list_projects`. Affected cards
+Or from chat: `rename_session`, `rename_project`, `list_projects`. Every card
+result also ends with a **Next:** line naming the options that apply to it —
+adding a photo, renaming, or hiding project names before you share. Affected cards
 are redrawn immediately — changing a name in a table does nothing to a PNG
 already on disk.
 

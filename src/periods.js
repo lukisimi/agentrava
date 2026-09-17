@@ -64,10 +64,28 @@ export function daysIn({ start, end }) {
   return out;
 }
 
-// "2026-W38" / "2026-09" / "this" / "last" -> bounds.
+// A rolling window ending at the end of today: always N whole days, where a
+// calendar period shared mid-week is a stub. `rolling` tells the renderers to
+// label it by range rather than by week or month name.
+export function rollingWindow(days, now = new Date()) {
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  return { start: addDays(end, -days), end, kind: days > 8 ? 'month' : 'week', rolling: days };
+}
+
+const ROLLING = /^(?:last[-\s]?)?(\d{1,3})\s?d(?:ays)?$|^last(\d{1,3})$/i;
+
+// "this" / "last" / "last7" / "30d" / "2026-09" / "2026-09-17" -> bounds.
 export function resolvePeriod(kind, spec, now = new Date()) {
   const of = kind === 'week' ? weekOf : monthOf;
   if (!spec || spec === 'this' || spec === 'current') return of(now);
+  const roll = String(spec).match(ROLLING);
+  if (roll) {
+    const n = Number(roll[1] || roll[2]);
+    if (!n || n > 366) throw new Error(`Rolling window must be 1-366 days, got "${spec}".`);
+    // The weekly card has seven slots and the monthly grid needs whole weeks.
+    if (kind === 'week' && n !== 7) throw new Error(`weekly_snap draws seven bars — use last7, or monthly_snap for a ${n}-day window.`);
+    return rollingWindow(n, now);
+  }
   if (spec === 'last' || spec === 'previous') {
     const cur = of(now);
     return of(kind === 'week' ? addDays(cur.start, -1) : new Date(cur.start.getFullYear(), cur.start.getMonth() - 1, 1));
@@ -77,5 +95,6 @@ export function resolvePeriod(kind, spec, now = new Date()) {
     return monthOf(new Date(y, m - 1, 1));
   }
   if (/^\d{4}-\d{2}-\d{2}$/.test(spec)) return of(parseDay(spec));
-  throw new Error(`Unrecognised ${kind}: "${spec}". Use this, last, YYYY-MM-DD${kind === 'month' ? ' or YYYY-MM' : ''}.`);
+  throw new Error(`Unrecognised ${kind}: "${spec}". Use this, last, ` +
+    `${kind === 'week' ? 'last7' : 'last30'}, YYYY-MM-DD${kind === 'month' ? ' or YYYY-MM' : ''}.`);
 }

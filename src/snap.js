@@ -97,6 +97,7 @@ export function renderWeekly(s, { athlete, title, hideProjects = false } = {}) {
   const sub = start.getMonth() === last.getMonth()
     ? `${start.getDate()}–${last.getDate()} ${MONTHS[last.getMonth()]} ${last.getFullYear()}`
     : `${start.getDate()} ${MONTHS[start.getMonth()].slice(0, 3)} – ${last.getDate()} ${MONTHS[last.getMonth()].slice(0, 3)} ${last.getFullYear()}`;
+  const rolling = s.period.rolling || 0;
 
   // Chart: seven bars on a whole-hour scale.
   const panel = { x: P, y: 250, w: W - 2 * P, h: 380 };
@@ -118,7 +119,9 @@ export function renderWeekly(s, { athlete, title, hideProjects = false } = {}) {
       const h = Math.max(6, plot.h * (d.seconds / (topH * 3600)));
       chart += `<rect x="${(cx - barW / 2).toFixed(1)}" y="${(plot.y + plot.h - h).toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="10" fill="${d === peak ? ACCENT : 'url(#bar)'}"/>`;
     }
-    chart += `<text x="${cx.toFixed(1)}" y="${plot.y + plot.h + 40}" fill="${C.label}" font-size="19" font-weight="600" letter-spacing="1" text-anchor="middle">${DOW[i]}</text>`;
+    // A rolling window does not start on a Monday, so label each bar by its own day.
+    const dow = rolling ? DOW[(d.date.getDay() + 6) % 7] : DOW[i];
+    chart += `<text x="${cx.toFixed(1)}" y="${plot.y + plot.h + 40}" fill="${C.label}" font-size="19" font-weight="600" letter-spacing="1" text-anchor="middle">${dow}</text>`;
   });
   if (!s.sessions) {
     chart += `<text x="${panel.x + panel.w / 2}" y="${plot.y + plot.h / 2}" fill="${C.muted}" font-size="26" text-anchor="middle">No recorded sessions this week</text>`;
@@ -126,7 +129,7 @@ export function renderWeekly(s, { athlete, title, hideProjects = false } = {}) {
 
   const cost = costLine(s);
   const inner = `
-  <text x="${P}" y="215" fill="${C.ink}" font-size="58" font-weight="700" letter-spacing="-1.5">${esc(fit(title || 'Your week in code', 58, W - 2 * P, true))}</text>
+  <text x="${P}" y="215" fill="${C.ink}" font-size="58" font-weight="700" letter-spacing="-1.5">${esc(fit(title || (rolling ? `Your last ${rolling} days` : 'Your week in code'), 58, W - 2 * P, true))}</text>
   <rect x="${panel.x}" y="${panel.y}" width="${panel.w}" height="${panel.h}" rx="24" fill="${C.panel}"/>
   ${label(panel.x + 32, panel.y + 50, 'AGENT TIME')}
   <text x="${panel.x + panel.w - 32}" y="${panel.y + 50}" fill="${C.muted}" font-size="16" text-anchor="end">summed across sessions · parallel agents overlap</text>
@@ -138,15 +141,24 @@ export function renderWeekly(s, { athlete, title, hideProjects = false } = {}) {
   <line x1="${P}" y1="960" x2="${W - P}" y2="960" stroke="#ffffff" stroke-opacity="0.08"/>
   ${feature(1008, s, { heading: 'SESSION SPOTLIGHT', title: s.feature ? `Longest session · ${fmtHM(s.feature.seconds)}` : '' })}`;
 
-  return frame(inner, { athlete, sub, kind: 'WEEKLY SNAP', partial: s.partial ? 'THIS WEEK SO FAR' : '' });
+  return frame(inner, { athlete, sub,
+    kind: rolling ? `LAST ${rolling} DAYS` : 'WEEKLY SNAP',
+    partial: !rolling && s.partial ? 'THIS WEEK SO FAR' : '' });
 }
 
 /* ---------------- monthly ---------------- */
 
 export function renderMonthly(s, { athlete, title, hideProjects = false } = {}) {
   athlete = athlete || config().athlete || 'Athlete';
-  const { start } = s.period;
-  const monthName = `${MONTHS[start.getMonth()]} ${start.getFullYear()}`;
+  const { start, end } = s.period;
+  const rolling = s.period.rolling || 0;
+  const last = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 1);
+  const monthName = rolling
+    ? `LAST ${rolling} DAYS`
+    : `${MONTHS[start.getMonth()]} ${start.getFullYear()}`;
+  const sub = rolling
+    ? `${start.getDate()} ${MONTHS[start.getMonth()].slice(0, 3)} – ${last.getDate()} ${MONTHS[last.getMonth()].slice(0, 3)} ${last.getFullYear()}`
+    : `${MONTHS[start.getMonth()]} ${start.getFullYear()}`;
 
   const panel = { x: P, y: 245, w: W - 2 * P };
   const inset = 32, gap = 10;
@@ -214,7 +226,7 @@ export function renderMonthly(s, { athlete, title, hideProjects = false } = {}) 
 
   const cost = costLine(s);
   const inner = `
-  <text x="${P}" y="210" fill="${C.ink}" font-size="58" font-weight="700" letter-spacing="-1.5">${esc(fit(title || 'Your month in code', 58, W - 2 * P, true))}</text>
+  <text x="${P}" y="210" fill="${C.ink}" font-size="58" font-weight="700" letter-spacing="-1.5">${esc(fit(title || (rolling ? `Your last ${rolling} days` : 'Your month in code'), 58, W - 2 * P, true))}</text>
   <rect x="${panel.x}" y="${panel.y}" width="${panel.w}" height="${panel.h}" rx="24" fill="${C.panel}"/>
   ${label(panel.x + inset, panel.y + 50, monthName.toUpperCase())}
   ${grid}${legend}
@@ -222,5 +234,7 @@ export function renderMonthly(s, { athlete, title, hideProjects = false } = {}) 
   ${projects}
   ${feature(pickY, s, { heading: f && f.selected ? "MONTH'S PICK" : 'LONGEST SESSION', title: pickTitle, compact: true })}`;
 
-  return frame(inner, { athlete, sub: monthName, kind: 'MONTHLY SNAP', partial: s.partial ? 'THIS MONTH SO FAR' : '' });
+  return frame(inner, { athlete, sub,
+    kind: rolling ? `LAST ${rolling} DAYS` : 'MONTHLY SNAP',
+    partial: !rolling && s.partial ? 'THIS MONTH SO FAR' : '' });
 }

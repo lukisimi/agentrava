@@ -31,11 +31,13 @@ if (opt('--pick') && !(s.feature && s.feature.selected)) {
 
 const svg = kind === 'week' ? renderWeekly(s, { title, hideProjects }) : renderMonthly(s, { title, hideProjects });
 // The key names every variant, so an anonymised export never overwrites the plain one.
-const key = ['snap', kind, dayKey(period.start.getTime()), hideProjects ? 'anon' : '', title ? 'titled' : '']
+const key = ['snap', kind, dayKey(period.start.getTime()), period.rolling ? `r${period.rolling}` : '', hideProjects ? 'anon' : '', title ? 'titled' : '']
   .filter(Boolean).join('-');
 const out = writeCard(key, svg);
 
-console.log(`${kind === 'week' ? 'Week' : 'Month'} of ${dayKey(period.start.getTime())}${s.partial ? ' (so far)' : ''}`);
+console.log(period.rolling
+  ? `Last ${period.rolling} days to ${dayKey(Date.now())}`
+  : `${kind === 'week' ? 'Week' : 'Month'} of ${dayKey(period.start.getTime())}${s.partial ? ' (so far)' : ''}`);
 console.log(`  ${s.sessions} sessions · ${s.activeDays} active days · ${s.projectCount} projects · ${fmtHM(s.moving)} agent time`);
 console.log(`  ${s.toolCalls.toLocaleString('en-US')} tool calls (apportioned by time) · ${s.costCoverage.priced ? 'est. ' + fmtUsd(s.cost) : 'no cost recorded'}` +
   (s.costCoverage.priced < s.costCoverage.of ? ` — ${s.costCoverage.priced} of ${s.costCoverage.of} sessions priced` : ''));
