@@ -96,11 +96,23 @@ function bashWrites(cmd) {
 // a separate project. $HOME/.claude itself is excluded below.
 const WORKTREE = /^(.*?)\/\.(?:claude|cursor)\//;
 
-// Root directory of the repository cwd belongs to, or '' for $HOME / nothing.
+// Agent scaffolding is not a project: memory files, scratch workspaces and the
+// like are where the tooling lives, not where the user works.
+function isScaffolding(cwd) {
+  const home = os.homedir();
+  return [path.join(home, '.claude'), path.join(home, '.cursor'),
+          path.join(home, 'Library', 'Application Support', 'Claude'),
+          path.join(home, 'Library', 'Application Support', 'Cursor')]
+    .some((dir) => cwd === dir || cwd.startsWith(dir + path.sep));
+}
+
+// Root directory of the repository cwd belongs to, or '' for $HOME, agent
+// scaffolding, or nothing.
 function repoRoot(cwd) {
   if (!cwd) return '';
   const wt = cwd.match(WORKTREE);
   if (wt && wt[1] && wt[1] !== os.homedir()) return wt[1];
+  if (isScaffolding(cwd)) return '';
   try {
     const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'],
       { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000 }).trim();
@@ -118,11 +130,21 @@ function repoName(cwd) {
   return root ? path.basename(root) : '';
 }
 
+// Where the session actually worked. The caller's cwd is whatever directory the
+// logger happened to be in — for a session that moves around, logging from $HOME
+// dropped its project entirely. The transcript records a cwd per entry, so use
+// the most frequent one that resolves to a repository.
+function workingDir(cwds, fallback) {
+  const ranked = Object.entries(cwds || {}).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  for (const [dir] of ranked) if (repoRoot(dir)) return dir;
+  return fallback || (ranked[0] && ranked[0][0]) || '';
+}
+
 async function parseTranscript(file) {
   const s = {
     toolCalls: 0, tokens: 0, errors: 0, files: new Set(),
     added: 0, removed: 0, first: null, last: null, moving: 0, prompt: '', cwd: '',
-    shellFiles: new Set(), models: {},
+    shellFiles: new Set(), models: {}, cwds: {},
     events: [],   // { at: moving-ms so far, gain: elevation earned }
     daily: {},    // local day -> moving ms
     tokIn: 0, tokOut: 0, tokCacheWrite: 0, tokCacheRead: 0, costUsd: 0,
@@ -153,6 +175,7 @@ async function parseTranscript(file) {
       s.atMoving = s.moving;   // position of anything recorded from this entry
     }
     if (!s.cwd && d.cwd) s.cwd = d.cwd;
+    if (d.cwd) s.cwds[d.cwd] = (s.cwds[d.cwd] || 0) + 1;
 
     if (d.type === 'assistant') {
       const m = d.message || {};
@@ -270,7 +293,8 @@ export function storeSession({ sessionId, stats: s, cwd, drawCard = true, dry = 
   if (s.toolCalls < MIN_TOOL_CALLS) return { skipped: `only ${s.toolCalls} tool calls` };
   if (duration < MIN_SECONDS) return { skipped: `only ${duration}s of moving time` };
 
-  for (const p of s.shellFiles) s.files.add(path.resolve(cwd || s.cwd || '.', p));
+  const workdir = workingDir(s.cwds, cwd || s.cwd);
+  for (const p of s.shellFiles) s.files.add(path.resolve(workdir || '.', p));
 
   const languages = [...new Set([...s.files]
     .map((f) => EXT_LANG[path.extname(f).slice(1).toLowerCase()])
@@ -282,9 +306,9 @@ export function storeSession({ sessionId, stats: s, cwd, drawCard = true, dry = 
     date: s.last ? new Date(s.last).toISOString() : (s.first ? new Date(s.first).toISOString() : undefined),
     type: inferType(s, s.added - s.removed),
     model: s.model || dominantModel(s.models) || undefined,
-    repo: repoName(cwd || s.cwd),
+    repo: repoName(workdir),
     // The project's identity; repo above is only its default display name.
-    repo_path: repoRoot(cwd || s.cwd),
+    repo_path: repoRoot(workdir),
     summary: config().summaries === 'off' ? '' : cleanSummary(s.prompt).slice(0, 160),
     duration_seconds: duration,
     tool_calls: s.toolCalls,

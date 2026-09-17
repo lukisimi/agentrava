@@ -329,6 +329,13 @@ session titles in `overrides.json`, project names in `projects.json` — so a
 re-log or a forced backfill keeps them, and a reset always restores the
 generated name.
 
+**Which project a session belongs to comes from the transcript**, not from where
+you happened to run the logger: the most frequent working directory recorded in
+the session that resolves to a repository. Logging the same session from `$HOME`
+used to drop its project entirely, so a project could vanish from a snap with no
+work having happened. Agent scaffolding — `~/.claude`, `~/.cursor`, Claude's
+scratch workspaces — is never a project.
+
 **A project is its repository path, not its name.** Two repositories both called
 `web` stay separate, and giving two projects the same display name does not merge
 them. A name that matches more than one project is refused with the paths listed,
