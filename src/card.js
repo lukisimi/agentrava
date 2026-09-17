@@ -270,9 +270,9 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
   <rect x="0" y="0" width="${W}" height="8" fill="${accent}"/>
 
   <!-- header -->
-  ${avatarSvg({ cx: P + 33, cy: 103, r: 33, initial: esc(a.athlete.slice(0, 1).toUpperCase()), accent, ink: C.ink, id: 'avatar' })}
-  <text x="${P + 84}" y="95" fill="${C.ink}" font-size="29" font-weight="700">${esc(fit(a.athlete, 29, 500, true))}</text>
-  <text x="${P + 84}" y="127" fill="${C.muted}" font-size="21">${esc(fit(subtitle, 21, 700))}</text>
+  ${avatarSvg({ cx: P + 40, cy: 103, r: 40, initial: esc(a.athlete.slice(0, 1).toUpperCase()), accent, ink: C.ink, id: 'avatar' })}
+  <text x="${P + 96}" y="95" fill="${C.ink}" font-size="29" font-weight="700">${esc(fit(a.athlete, 29, 500, true))}</text>
+  <text x="${P + 96}" y="127" fill="${C.muted}" font-size="21">${esc(fit(subtitle, 21, 700))}</text>
   <text x="${W - P}" y="98" fill="${C.label}" font-size="19" font-weight="700" letter-spacing="2" text-anchor="end">${esc(a.type.toUpperCase())}</text>
   ${streak > 1 ? `<text x="${W - P}" y="127" fill="${accent}" font-size="21" font-weight="700" text-anchor="end">${streak}-day streak</text>` : ''}
 

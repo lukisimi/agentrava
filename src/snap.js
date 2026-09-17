@@ -25,9 +25,9 @@ function frame(inner, { athlete, sub, kind, partial }) {
   </defs>
   <rect width="${W}" height="${H}" fill="url(#bg)"/>
   <rect width="${W}" height="8" fill="${ACCENT}"/>
-  ${avatarSvg({ cx: P + 33, cy: 103, r: 33, initial, accent: ACCENT, ink: C.ink, id: 'avatar' })}
-  <text x="${P + 84}" y="95" fill="${C.ink}" font-size="29" font-weight="700">${esc(fit(athlete, 29, 470, true))}</text>
-  <text x="${P + 84}" y="127" fill="${C.muted}" font-size="21">${esc(sub)}</text>
+  ${avatarSvg({ cx: P + 40, cy: 103, r: 40, initial, accent: ACCENT, ink: C.ink, id: 'avatar' })}
+  <text x="${P + 96}" y="95" fill="${C.ink}" font-size="29" font-weight="700">${esc(fit(athlete, 29, 450, true))}</text>
+  <text x="${P + 96}" y="127" fill="${C.muted}" font-size="21">${esc(sub)}</text>
   <text x="${W - P}" y="98" fill="${C.label}" font-size="19" font-weight="700" letter-spacing="2" text-anchor="end">${kind}</text>
   ${partial ? `<text x="${W - P}" y="127" fill="${ACCENT}" font-size="18" font-weight="700" letter-spacing="1.5" text-anchor="end">${partial}</text>` : ''}
   ${inner}
