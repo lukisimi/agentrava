@@ -26,7 +26,10 @@ import os from 'node:os';
 import readline from 'node:readline';
 import { execFileSync } from 'node:child_process';
 
-import { upsertBySession, all, config } from './store.js';
+import { upsertBySession, all, config, withPresentation } from './store.js';
+import { photoFor } from './photo.js';
+import { creditInterval, roundDaily } from './periods.js';
+import { createHash } from 'node:crypto';
 import { clean } from './metrics.js';
 import { dominantModel } from './models.js';
 import { costOf } from './pricing.js';
@@ -87,18 +90,32 @@ function bashWrites(cmd) {
 // The cwd basename is a poor repo name: a worktree yields its branch-suffixed
 // directory, and running from $HOME yields the username. Ask git for the shared
 // repository instead, which is stable across worktrees.
-function repoName(cwd) {
+// Anything under <repo>/.claude/ or <repo>/.cursor/ — worktrees, skills, plans —
+// belongs to <repo>. Read it straight off the path: that works after a worktree
+// is deleted, which git cannot, and deleted worktrees were each being counted as
+// a separate project. $HOME/.claude itself is excluded below.
+const WORKTREE = /^(.*?)\/\.(?:claude|cursor)\//;
+
+// Root directory of the repository cwd belongs to, or '' for $HOME / nothing.
+function repoRoot(cwd) {
   if (!cwd) return '';
+  const wt = cwd.match(WORKTREE);
+  if (wt && wt[1] && wt[1] !== os.homedir()) return wt[1];
   try {
     const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'],
       { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 3000 }).trim();
     if (common) {
       const root = path.basename(common) === '.git' ? path.dirname(common) : common;
-      if (root && root !== os.homedir()) return path.basename(root);
+      if (root && root !== os.homedir()) return root;
     }
   } catch { /* not a repo, or no git */ }
   if (path.resolve(cwd) === os.homedir()) return '';
-  return path.basename(cwd);
+  return path.resolve(cwd);
+}
+
+function repoName(cwd) {
+  const root = repoRoot(cwd);
+  return root ? path.basename(root) : '';
 }
 
 async function parseTranscript(file) {
@@ -107,6 +124,7 @@ async function parseTranscript(file) {
     added: 0, removed: 0, first: null, last: null, moving: 0, prompt: '', cwd: '',
     shellFiles: new Set(), models: {},
     events: [],   // { at: moving-ms so far, gain: elevation earned }
+    daily: {},    // local day -> moving ms
     tokIn: 0, tokOut: 0, tokCacheWrite: 0, tokCacheRead: 0, costUsd: 0,
   };
   // Strava auto-pauses when you stop moving; a resumed session otherwise clocks
@@ -126,7 +144,11 @@ async function parseTranscript(file) {
     if (!Number.isNaN(ts)) {
       if (s.first === null || ts < s.first) s.first = ts;
       if (s.last === null || ts > s.last) s.last = ts;
-      if (prevTs !== null && ts > prevTs) s.moving += Math.min(ts - prevTs, GAP_CAP_MS);
+      if (prevTs !== null && ts > prevTs) {
+        const credit = Math.min(ts - prevTs, GAP_CAP_MS);
+        s.moving += credit;
+        creditInterval(s.daily, ts - credit, ts);
+      }
       prevTs = ts;
       s.atMoving = s.moving;   // position of anything recorded from this entry
     }
@@ -261,6 +283,8 @@ export function storeSession({ sessionId, stats: s, cwd, drawCard = true, dry = 
     type: inferType(s, s.added - s.removed),
     model: s.model || dominantModel(s.models) || undefined,
     repo: repoName(cwd || s.cwd),
+    // The project's identity; repo above is only its default display name.
+    repo_path: repoRoot(cwd || s.cwd),
     summary: config().summaries === 'off' ? '' : cleanSummary(s.prompt).slice(0, 160),
     duration_seconds: duration,
     tool_calls: s.toolCalls,
@@ -276,12 +300,16 @@ export function storeSession({ sessionId, stats: s, cwd, drawCard = true, dry = 
     // Cursor builds its own profile during the scan; only compute here when the
     // parser handed over raw events instead.
     profile: s.profile || buildProfile(s.events, s.moving),
+    daily: roundDaily(s.daily),
     errors_recovered: Math.min(s.errors, 20),
     edits_accepted: s.accepted || 0,
     edits_rejected: s.rejected || 0,
     languages,
   });
   activity.session_id = sessionId;
+  // Derived, not random: a forced rebuild used to mint a new id for every session,
+  // which redrew every route and orphaned every card file on disk.
+  activity.id = 'act_' + createHash('sha1').update(`${client}:${sessionId}`).digest('hex').slice(0, 12);
   activity.source = 'hook';
   activity.client = client;
 
@@ -302,8 +330,10 @@ export function storeSession({ sessionId, stats: s, cwd, drawCard = true, dry = 
 
   let card = null;
   if (drawCard) {
-    const svg = renderCard({ ...activity, id: stored.id, date: stored.date },
-      { badges, prs, streak: streak([...history, activity]) });
+    // Draw with the saved photo and route placement, or every re-log would silently
+    // strip them back off the card.
+    const shown = withPresentation({ ...activity, id: stored.id, date: stored.date, session_id: sessionId });
+    const svg = renderCard(shown, { badges, prs, streak: streak([...history, activity]), photo: photoFor(shown) });
     const out = writeCard(stored.id, svg);
     card = out.pngPath || out.svgPath;
     upsertBySession(sessionId, { ...stored, card });

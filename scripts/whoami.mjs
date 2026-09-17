@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Set the name shown on every card.
-//   node scripts/whoami.mjs "Luka Pecavar"
+//   node scripts/whoami.mjs "Your Name"
 //   node scripts/whoami.mjs            (show the current one)
 import { all, load, save, config, setConfig } from '../src/store.js';
 

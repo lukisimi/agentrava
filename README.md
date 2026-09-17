@@ -7,7 +7,11 @@ bragging card — route map, climb profile, headline stats, badges, personal rec
   <img src="docs/example.png" width="46%" alt="A single session card">
   <img src="docs/recap.png" width="46%" alt="A season recap card">
 </p>
-<p align="center"><em>One session · a whole season. Both examples are synthetic — no real usage data ships in this repo.</em></p>
+<p align="center">
+  <img src="docs/weekly.png" width="46%" alt="A Weekly Snap card">
+  <img src="docs/monthly.png" width="46%" alt="A Monthly Snap card">
+</p>
+<p align="center"><em>A session · a season · a week · a month. All four are generated from a synthetic season — no real usage data ships in this repo.</em></p>
 
 **Nothing on a card is self-reported.** A hook parses the session transcript for
 tool calls, tokens, diff hunks, recovered errors and moving time. The agent never
@@ -44,7 +48,9 @@ Any MCP client works — it speaks stdio:
 - **`log_activity`** — log a session by hand; unreported fields count as zero.
 - **`recap`** — one card for a whole period: totals, activity heatmap, hour-of-day
   histogram, trophy case, longest streak, biggest session. Optional `from` / `to`.
+- **`weekly_snap`** · **`monthly_snap`** — a week or a month on one card, same size as a session card.
 - **`get_profile`** — career totals, streak, personal records, trophy case.
+- **`rename_session`** · **`rename_project`** · **`list_projects`** — your own names, kept across re-logs.
 - **`list_activities`** · **`leaderboard`** · **`set_athlete`**
 
 ## The metaphor
@@ -111,6 +117,45 @@ elevation figure on the card.
 That strip was decoration until recently — a seeded random walk reading no session
 data at all, the same label over pure noise. Sessions with fewer than three climb
 events now get **no strip at all** rather than an invented one. 81% have a profile.
+
+## Weekly and Monthly Snap
+
+```bash
+node scripts/snap.mjs week                 # this week so far
+node scripts/snap.mjs week last
+node scripts/snap.mjs month 2026-08
+node scripts/snap.mjs month 2026-08 --pick 086f7bf6   # feature a session you chose
+node scripts/snap.mjs week --title "Shipped the new onboarding" --hide-projects
+```
+
+Both are **1080×1350, the same frame as a session card**, so a snap and a card sit
+side by side in a feed. A six-row month is the tightest case and still clears the
+footer.
+
+**Weekly** — agent time per day, sessions / active days / projects, tool calls,
+estimated cost, and the longest session. **Monthly** — a Monday-first heatmap,
+the same headline counts, the top three projects by time, and a featured session.
+
+What makes the numbers hold together:
+
+- **Daily buckets are recorded, not inferred.** Both parsers credit each stretch
+  of moving time to the local day it happened, splitting at midnight, so a session
+  from 23:50 to 00:05 counts 10 minutes on one day and 5 on the next. Every bar
+  and heatmap cell comes from those buckets, and so does Active Days — seven bars
+  can't sit next to a five-day headline.
+- **A session crossing a period boundary appears in both**, with its time
+  apportioned. Tool calls and cost have no per-day record, so they are apportioned
+  by the same time share.
+- **"Agent time" is summed across sessions.** Nine agents running in parallel for
+  five hours is 45 hours of agent time on one day. The card says so under the
+  chart; it is not your working hours.
+- **Cost says when it is partial** — `partial · 38 of 40 priced` — and reads
+  "not recorded" rather than $0 when nothing could be priced.
+- **"Month's pick · Selected by you" appears only when you picked it.** Otherwise
+  the feature is labelled "Longest session", which is what it is.
+- **An unfinished period says so** — "This week so far".
+- **Nothing is inferred about outcome.** A `--title` is yours to write; the card
+  never claims anything shipped.
 
 ## Badges
 
@@ -245,11 +290,42 @@ bike. The model is gear, shown under the title with the client:
 `Claude Opus 5 · Cursor`.
 
 ```bash
-node scripts/whoami.mjs "Luka"   # set the name on every card, past and future
+node scripts/whoami.mjs "Your Name"   # set the name on every card, past and future
 ```
 
 `set_athlete` does the same from chat. Unset, cards read "Athlete" — the safe
 default for sharing.
+
+### Renaming sessions and projects
+
+```bash
+node scripts/rename.mjs session 4e374e0a "The photo that kept vanishing"
+node scripts/rename.mjs session 4e374e0a --reset          # back to the generated title
+node scripts/rename.mjs projects                          # list, with paths
+node scripts/rename.mjs project "acme-api-service" "API"
+node scripts/rename.mjs project API --reset
+node scripts/rename.mjs project API --hide                # keep it off every card
+```
+
+Or from chat: `rename_session`, `rename_project`, `list_projects`. Affected cards
+are redrawn immediately — changing a name in a table does nothing to a PNG
+already on disk.
+
+Names are presentation, stored beside the measured data rather than in it —
+session titles in `overrides.json`, project names in `projects.json` — so a
+re-log or a forced backfill keeps them, and a reset always restores the
+generated name.
+
+**A project is its repository path, not its name.** Two repositories both called
+`web` stay separate, and giving two projects the same display name does not merge
+them. A name that matches more than one project is refused with the paths listed,
+rather than guessed; so is a session id prefix that matches more than one session.
+Anything under a repository's `.claude/` or `.cursor/` — worktrees, skills —
+counts as that repository.
+
+Hiding a project removes its name from session cards and shows it as
+"Project A" on snaps. The route is seeded by activity id only, so renaming a
+session never redraws its route.
 
 ### Client names and logos
 
@@ -276,6 +352,19 @@ node scripts/card.mjs <session> --no-photo
 file on disk — it lives as base64 in the transcript — so this recovers the most
 recent one. jpg/png/gif/webp under 8 MB, embedded so the card stays one
 self-contained file.
+
+A centred full-size route sits right on whoever is in the photo, so photo cards
+default to a **smaller route on the left**. Move it yourself if the subject is
+elsewhere — there is no face detection, on purpose:
+
+```bash
+node scripts/card.mjs <session> --route right --route-scale 0.6
+node scripts/card.mjs <session> --route auto      # back to the default
+```
+
+Photo and route placement live in `~/.agentrava/overrides.json`, apart from the
+measured data, so re-logging a session or a forced backfill keeps them. (Before
+this, every re-log redrew the card from scratch and silently dropped the photo.)
 
 ### Before you share one
 
@@ -316,6 +405,15 @@ there is no network call anywhere in this server.
 
 Writes are serialised with a `mkdir`-based cross-process lock: every session's hook
 writes the same file, and without it a 20-way concurrent test lost 19 writes.
+
+Activity ids are derived from the client and session id, so a forced rebuild
+produces the same ids, the same routes and the same card files — it used to mint
+new ones and orphan hundreds of cards each time.
+
+Projects are resolved through agent worktrees: a session in
+`<repo>/.claude/worktrees/<name>` belongs to `<repo>`, read straight off the path
+so it still works after the worktree is deleted. Without this, one week counted
+18 projects that were really 2.
 
 ## Development
 

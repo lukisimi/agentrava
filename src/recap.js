@@ -151,7 +151,9 @@ export function renderRecap(activities, { athlete, title = '' } = {}) {
 
   ${bigStat(P, 350, t.km.toFixed(0), 'km', 'Distance')}
   ${bigStat(P + 322, 350, fmtNum(Math.round(t.m)), 'm', 'Elevation')}
-  ${bigStat(P + 644, 350, fmtDuration(t.sec).split(':')[0], 'h', 'Moving Time')}
+  ${t.sec >= 3600
+    ? bigStat(P + 644, 350, String(Math.floor(t.sec / 3600)), 'h', 'Moving Time')
+    : bigStat(P + 644, 350, String(Math.round(t.sec / 60)), 'min', 'Moving Time')}
 
   <line x1="${P}" y1="${412}" x2="${W - P}" y2="${412}" stroke="#ffffff" stroke-opacity="0.08"/>
 

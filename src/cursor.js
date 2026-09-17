@@ -11,6 +11,7 @@ import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { dominantModel } from './models.js';
 import { buildProfile } from './session.js';
+import { creditInterval, roundDaily } from './periods.js';
 
 export const DEFAULT_DB = path.join(os.homedir(),
   'Library', 'Application Support', 'Cursor', 'User', 'globalStorage', 'state.vscdb');
@@ -191,7 +192,13 @@ export function scanCursorDb(db = DEFAULT_DB) {
   for (const [id, b] of bubbles) {
     const ts = times.get(id) || [];
     let moving = 0;
-    for (let i = 1; i < ts.length; i++) moving += Math.min(ts[i] - ts[i - 1], 300_000);
+    const daily = {};
+    for (let i = 1; i < ts.length; i++) {
+      const credit = Math.min(ts[i] - ts[i - 1], 300_000);
+      moving += credit;
+      creditInterval(daily, ts[i] - credit, ts[i]);
+    }
+    b.daily = daily;          // raw ms; storeSession converts once, like every other parser
     const d = diffs.get(id) || { added: 0, removed: 0 };
     b.model = dominantModel(models.get(id) || {});
     // Position each climb event by moving time, matching the Claude Code path.

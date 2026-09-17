@@ -69,3 +69,9 @@ export function resolvePhotoPath(spec, transcriptPath) {
   if (!img) throw new Error('no image found in this conversation — paste one, then try again');
   return img.path;
 }
+
+// Data URI for an activity's photo, or null. A photo that has since moved or been
+// deleted should cost the card its background, not the whole render.
+export function photoFor(a) {
+  try { return a && a.photo ? photoDataUri(a.photo) : null; } catch { return null; }
+}

@@ -41,6 +41,7 @@ export function clean(input = {}) {
     summary: (input.summary || '').trim().slice(0, 160),
     athlete: (input.athlete || config().athlete || 'Athlete').trim().slice(0, 40),
     repo: (input.repo || '').trim().slice(0, 60),
+    repo_path: input.repo_path ? String(input.repo_path).slice(0, 500) : undefined,
     duration_seconds: n(input.duration_seconds, 60),
     tool_calls: n(input.tool_calls),
     files_changed: n(input.files_changed),
@@ -61,6 +62,11 @@ export function clean(input = {}) {
     notes: (Array.isArray(input.notes) ? input.notes : []).slice(0, 4).map((s) => String(s).slice(0, 80)),
     photo: input.photo ? String(input.photo) : undefined,
     model: input.model ? String(input.model).slice(0, 40) : undefined,
+    daily: input.daily && typeof input.daily === 'object'
+      ? Object.fromEntries(Object.entries(input.daily)
+          .filter(([k, v]) => /^\d{4}-\d{2}-\d{2}$/.test(k) && Number(v) > 0)
+          .map(([k, v]) => [k, Math.round(Number(v))]))
+      : undefined,
     profile: Array.isArray(input.profile) && input.profile.length ? input.profile.map((v) => Math.max(0, Math.min(100, Math.round(Number(v) || 0)))) : undefined,
     client: input.client ? String(input.client).slice(0, 30) : undefined,
   };

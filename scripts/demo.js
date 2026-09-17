@@ -4,6 +4,9 @@ import { badgesFor } from '../src/achievements.js';
 import { renderCard } from '../src/card.js';
 import { writeCard } from '../src/render.js';
 import { renderRecap } from '../src/recap.js';
+import { renderWeekly, renderMonthly } from '../src/snap.js';
+import { summarize } from '../src/summary.js';
+import { resolvePeriod, dayKey } from '../src/periods.js';
 
 const SAMPLES = [
   ['demo', { type: 'debug', repo: 'acme/render-service', client: 'claude-code', model: 'Claude Opus 5', athlete: 'Sam Rivera',
@@ -72,6 +75,8 @@ function fakeSeason(n = 140) {
     });
     // The recap reads badges off the stored activity, so award them here too.
     a.badges = badgesFor(a).map((b) => b.id);
+    a.daily = { [dayKey(d.getTime())]: a.duration_seconds };
+    a.cost_usd = a.tokens / 1e6 * 4.2;   // synthetic blended rate; illustrates the column only
     out.push(a);
   }
   return out;
@@ -80,3 +85,18 @@ function fakeSeason(n = 140) {
 const season = fakeSeason();
 const recap = writeCard('demo-recap', renderRecap(season, { athlete: 'Sam Rivera' }));
 console.log(recap.pngPath, `— synthetic recap, ${season.length} activities`);
+
+// Snaps from the same fake season, pinned to fixed periods and a fixed "now" so
+// the committed images only change when the renderer does.
+const now = new Date(2026, 8, 30);
+// Densest full week in the fake season — deterministic, because the season is seeded.
+let week = null;
+for (let d = new Date(2026, 5, 1); d < new Date(2026, 7, 31); d.setDate(d.getDate() + 7)) {
+  const cand = summarize(season, resolvePeriod('week', dayKey(d.getTime())), { now });
+  if (!week || cand.activeDays > week.activeDays || (cand.activeDays === week.activeDays && cand.sessions > week.sessions)) week = cand;
+}
+const month = summarize(season, resolvePeriod('month', '2026-08'), { now });
+const w = writeCard('demo-weekly', renderWeekly(week, { athlete: 'Sam Rivera' }));
+const m = writeCard('demo-monthly', renderMonthly(month, { athlete: 'Sam Rivera' }));
+console.log(w.pngPath, `— synthetic week: ${week.sessions} sessions, ${week.activeDays} active days`);
+console.log(m.pngPath, `— synthetic month: ${month.sessions} sessions, ${month.activeDays} active days`);

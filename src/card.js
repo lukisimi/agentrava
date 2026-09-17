@@ -6,6 +6,8 @@ const W = 1080, H = 1350, P = 64;
 export const C = {
   bg0: '#0d0f13', bg1: '#171b23', panel: '#1b212b', panel2: '#232a36',
   ink: '#ffffff', muted: '#8b93a3', dim: '#5b6373', brand: '#fc5200',
+  // Labels, gear and footer: dim was unreadable at phone size.
+  label: '#a7afbd',
 };
 
 /* ---------- tiny deterministic PRNG so a card always redraws identically ---------- */
@@ -47,7 +49,9 @@ function wrap(s, size, maxW, maxLines) {
 
 /* ---------- the route: a GPS trace synthesised from how the session actually went ---------- */
 function buildRoute(a, d) {
-  const r = rng(hash(a.id + a.title));
+  // Seeded by identity only: a title can change (renames, time-of-day fixes) and
+  // must not redraw the route.
+  const r = rng(hash(a.route_seed || a.id));
   const steps = Math.round(Math.min(240, Math.max(26, a.tool_calls * 2.2 + 24)));
   // Radius tracks total path length so a busy session spreads out instead of
   // scribbling over itself: area ~ length x comfortable line spacing.
@@ -90,6 +94,40 @@ function buildRoute(a, d) {
   return pts;
 }
 
+// The footer is the diff and nothing else. Token accounting truncated here and
+// belongs in the text output; zero churn is left out rather than shown, because
+// for Cursor it usually means "not recorded", not "nothing changed".
+function footerLine(a) {
+  const parts = [];
+  if (a.lines_added || a.lines_removed) parts.push(`+${fmtNum(a.lines_added)}`, `−${fmtNum(a.lines_removed)}`);
+  if (a.files_changed) parts.push(`${a.files_changed} file${a.files_changed === 1 ? '' : 's'}`);
+  if (!parts.length && a.edits_accepted) parts.push(`${a.edits_accepted} edits kept`);
+  return parts.join(' · ');
+}
+
+// Where the route sits. Plain cards centre it at full size; photo cards default
+// to a smaller trace on the left, since a centred one covers whoever is in the
+// picture. Overridable per activity — there is no face detection, deliberately.
+export const ROUTE_POSITIONS = ['left', 'center', 'right'];
+
+function placement(a, photo) {
+  const r = a.route || {};
+  const position = ROUTE_POSITIONS.includes(r.position) ? r.position : (photo ? 'left' : 'center');
+  const fallback = position === 'center' ? 1 : 0.8;
+  const scale = Math.min(1, Math.max(0.3, Number(r.scale) || fallback));
+  return { position, scale };
+}
+
+function routeBoxFor(mapBox, { position, scale }) {
+  const full = { x: mapBox.x + 30, y: mapBox.y + 24, w: mapBox.w - 60, h: 278 };
+  if (position === 'center') {
+    const w = full.w * scale, h = full.h * scale;
+    return { x: full.x + (full.w - w) / 2, y: full.y + (full.h - h) / 2, w, h };
+  }
+  const size = full.h * scale;
+  return { x: position === 'left' ? full.x : full.x + full.w - size, y: full.y, w: size, h: size };
+}
+
 function fitPoints(pts, box) {
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
@@ -122,12 +160,12 @@ function bigStat(x, y, value, unit, label) {
   return `
   <text x="${x}" y="${y}" fill="${C.ink}" font-size="66" font-weight="700" letter-spacing="-1">${esc(value)}</text>
   ${unit ? `<text x="${(x + vw + 8).toFixed(0)}" y="${y}" fill="${C.muted}" font-size="26" font-weight="600">${esc(unit)}</text>` : ''}
-  <text x="${x}" y="${y + 34}" fill="${C.dim}" font-size="19" font-weight="600" letter-spacing="1.6">${esc(label.toUpperCase())}</text>`;
+  <text x="${x}" y="${y + 34}" fill="${C.label}" font-size="19" font-weight="600" letter-spacing="1.6">${esc(label.toUpperCase())}</text>`;
 }
 function smallStat(x, y, value, label, color) {
   return `
   <text x="${x}" y="${y}" fill="${color || C.ink}" font-size="29" font-weight="700" letter-spacing="-0.5">${esc(value)}</text>
-  <text x="${x}" y="${y + 26}" fill="${C.dim}" font-size="14" font-weight="600" letter-spacing="1">${esc(label.toUpperCase())}</text>`;
+  <text x="${x}" y="${y + 26}" fill="${C.label}" font-size="14" font-weight="600" letter-spacing="1">${esc(label.toUpperCase())}</text>`;
 }
 const CHIP_SIZE = 21;
 const chipLabel = (t) => fit(t, CHIP_SIZE, 300, true);
@@ -159,7 +197,7 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
   const accent = meta.color;
 
   const mapBox = { x: P, y: 330, w: W - 2 * P, h: 430 };
-  const routeBox = { x: mapBox.x + 30, y: mapBox.y + 24, w: mapBox.w - 60, h: 278 };
+  const routeBox = routeBoxFor(mapBox, placement(a, photo));
   const elevBox = { x: mapBox.x + 30, y: mapBox.y + 348, w: mapBox.w - 60, h: 56 };
   const route = fitPoints(buildRoute(a, d), routeBox);
   const elev = elevationPath(a, elevBox);
@@ -167,7 +205,8 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
 
   const dateStr = new Date(a.date).toLocaleDateString('en-GB',
     { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-  const subtitle = [dateStr, a.repo].filter(Boolean).join('  ·  ');
+  const project = a.project_hidden ? '' : (a.project_name ?? a.repo);
+  const subtitle = [dateStr, project].filter(Boolean).join('  ·  ');
   const gearParts = [a.model, (clientInfo(a.client) || {}).label].filter(Boolean);
   // The band between title and map holds two lines; gear takes one when present.
   const summaryLines = a.summary ? wrap(a.summary, 24, W - 2 * P, gearParts.length ? 1 : 2) : [];
@@ -235,7 +274,7 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
   <text x="${P + 33}" y="114" fill="${accent}" font-size="32" font-weight="700" text-anchor="middle">${esc(a.athlete.slice(0, 1).toUpperCase())}</text>
   <text x="${P + 84}" y="95" fill="${C.ink}" font-size="29" font-weight="700">${esc(fit(a.athlete, 29, 500, true))}</text>
   <text x="${P + 84}" y="127" fill="${C.muted}" font-size="21">${esc(fit(subtitle, 21, 700))}</text>
-  <text x="${W - P}" y="98" fill="${C.dim}" font-size="19" font-weight="700" letter-spacing="2" text-anchor="end">${esc(a.type.toUpperCase())}</text>
+  <text x="${W - P}" y="98" fill="${C.label}" font-size="19" font-weight="700" letter-spacing="2" text-anchor="end">${esc(a.type.toUpperCase())}</text>
   ${streak > 1 ? `<text x="${W - P}" y="127" fill="${accent}" font-size="21" font-weight="700" text-anchor="end">${streak}-day streak</text>` : ''}
 
   <!-- title -->
@@ -248,7 +287,7 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
     const y = 272 + summaryLines.length * 32;
     const logoW = ci && ci.logo ? 30 : 0;
     return (ci && ci.logo ? `<image href="${ci.logo}" x="${P}" y="${y - 17}" width="22" height="22" preserveAspectRatio="xMidYMid meet"/>` : '') +
-      `<text x="${P + logoW}" y="${y}" fill="${C.dim}" font-size="21" font-weight="600">${esc(gear.join('  ·  '))}</text>`;
+      `<text x="${P + logoW}" y="${y}" fill="${C.label}" font-size="22" font-weight="600">${esc(gear.join('  ·  '))}</text>`;
   })()}
 
   <!-- map -->
@@ -264,7 +303,7 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
     ${elev ? `<line x1="${mapBox.x + 30}" y1="${elevBox.y - 22}" x2="${mapBox.x + mapBox.w - 30}" y2="${elevBox.y - 22}" stroke="#ffffff" stroke-opacity="${photo ? 0.16 : 0.07}"/>
     <path d="${elev.area}" fill="url(#elevfill)"/>
     <path d="${elev.line}" fill="none" stroke="${accent}" stroke-opacity="0.85" stroke-width="2.5"/>
-    <text x="${mapBox.x + 30}" y="${elevBox.y - 34}" fill="${photo ? '#ffffff' : C.dim}" fill-opacity="${photo ? 0.72 : 1}" font-size="16" font-weight="600" letter-spacing="1.4">CLIMB · ${Math.round(d.elevation_m).toLocaleString('en-US')} m</text>` : ''}
+    <text x="${mapBox.x + 30}" y="${elevBox.y - 34}" fill="${photo ? '#ffffff' : C.label}" fill-opacity="${photo ? 0.9 : 1}" font-size="17" font-weight="600" letter-spacing="1.4">CLIMB · ${Math.round(d.elevation_m).toLocaleString('en-US')} m</text>` : ''}
   </g>
 
   <!-- headline stats -->
@@ -277,24 +316,18 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
   ${smallStat(P, 990, fmtPace(d.pace_min_per_km) + '/km', 'Pace')}
   ${smallStat(P + 159, 990, String(a.tool_calls), 'Tool calls')}
   ${smallStat(P + 318, 990, fmtNum(a.tokens), 'Tokens')}
-  ${smallStat(P + 477, 990, a.cost_usd ? fmtUsd(a.cost_usd) : '—', 'API cost')}
+  ${smallStat(P + 477, 990, a.cost_usd ? fmtUsd(a.cost_usd) : '—', 'Est. API cost')}
   ${smallStat(P + 636, 990, d.tokens_per_km ? fmtNum(d.tokens_per_km) + '/km' : '—', 'Economy')}
   ${smallStat(P + 795, 990, String(d.effort), 'Effort', d.effort >= 80 ? '#e0245e' : C.ink)}
 
-  ${hasChips ? `<text x="${P}" y="1082" fill="${C.dim}" font-size="17" font-weight="700" letter-spacing="2">ACHIEVEMENTS</text>` : ''}
+  ${hasChips ? `<text x="${P}" y="1082" fill="${C.label}" font-size="17" font-weight="700" letter-spacing="2">ACHIEVEMENTS</text>` : ''}
   ${chipsSvg}
 
   <!-- footer -->
   <line x1="${P}" y1="1252" x2="${W - P}" y2="1252" stroke="#ffffff" stroke-opacity="0.08"/>
   <text x="${P}" y="1302" fill="${C.brand}" font-size="30" font-weight="700" letter-spacing="4">AGENTRAVA</text>
-  <text x="${W - P}" y="1302" fill="${C.dim}" font-size="20" text-anchor="end">${esc(fit(
-    [a.lines_added ? `+${fmtNum(a.lines_added)}` : '', a.lines_removed ? `−${fmtNum(a.lines_removed)}` : '',
-     `${a.files_changed} files`,
-     a.tokens_in || a.tokens_out ? `${fmtNum(a.tokens_in)} in / ${fmtNum(a.tokens_out)} out` : '',
-     a.tokens_cache_read ? `${fmtNum(a.tokens_cache_read)} cached` : '',
-     a.edits_accepted ? `${a.edits_accepted} edits kept${a.edits_rejected ? ` / ${a.edits_rejected} sent back` : ''}` : '',
-     a.languages.join(' / ')].filter(Boolean).join('  ·  '),
+  <text x="${W - P}" y="1302" fill="${C.label}" font-size="22" text-anchor="end">${esc(fit(footerLine(a),
     // Clamp to the space left of the AGENTRAVA wordmark, or the two collide.
-    20, W - 2 * P - 268))}</text>
+    22, W - 2 * P - 268))}</text>
 </svg>`;
 }

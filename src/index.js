@@ -6,14 +6,20 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 import fs from 'node:fs';
-import { append, all, load, save, config, setConfig } from './store.js';
+import { append, all, load, save, config, setConfig, presentAll, setOverride } from './store.js';
+import { renameSession, renameProject, listProjects, describeProject } from './names.js';
+import { redrawCards } from './redraw.js';
 import { clean, derive, fmtDuration, fmtPace, fmtNum, ACTIVITY_TYPES } from './metrics.js';
 import { badgesFor, prsFor, streak } from './achievements.js';
 import { renderCard } from './card.js';
 import { photoDataUri, resolvePhotoPath } from './photo.js';
+import { fmtUsd } from './pricing.js';
 import { logSession } from './session.js';
 import { resolveTranscript } from './transcripts.js';
 import { renderRecap } from './recap.js';
+import { resolvePeriod, dayKey } from './periods.js';
+import { summarize, fmtHM } from './summary.js';
+import { renderWeekly, renderMonthly } from './snap.js';
 import { writeCard } from './render.js';
 
 const num = (d) => ({ type: 'number', minimum: 0, description: d });
@@ -78,7 +84,7 @@ const TOOLS = [
       'the model that did the work is recorded separately as gear. Applies to past cards too. ' +
       'Ask the user what they want; do not guess a name from their email or filesystem.',
     inputSchema: { type: 'object', properties: {
-      name: { type: 'string', description: 'Display name, e.g. "Luka" or "Luka Pecavar". Max 40 characters.' },
+      name: { type: 'string', description: 'Display name, first name or full name. Max 40 characters.' },
     }, required: ['name'], additionalProperties: false },
   },
   {
@@ -95,6 +101,66 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: {
       limit: { type: 'number', description: 'How many, newest first. Default 10.' },
       athlete: { type: 'string' } }, additionalProperties: false },
+  },
+  {
+    name: 'rename_session',
+    title: 'Rename a session',
+    description:
+      'Give a session a title of your own; its cards are redrawn. The generated title is kept, ' +
+      'so reset restores it. Survives re-logging and backfills. Refuses an ambiguous id prefix.',
+    inputSchema: { type: 'object', properties: {
+      session: { type: 'string', description: 'Session or activity id, or an unambiguous prefix.' },
+      title: { type: 'string', description: 'New title, up to 60 characters.' },
+      reset: { type: 'boolean', description: 'Restore the generated title.' },
+    }, required: ['session'], additionalProperties: false },
+  },
+  {
+    name: 'rename_project',
+    title: 'Rename or hide a project',
+    description:
+      'Set the display name for a project everywhere it appears — session cards, snaps, profile. ' +
+      'Projects are identified by repository path, so two repos with the same name stay separate and ' +
+      'two projects given the same name are not merged. hidden keeps the name off every card.',
+    inputSchema: { type: 'object', properties: {
+      project: { type: 'string', description: 'Current display name, repository name, or repository path.' },
+      name: { type: 'string', description: 'New display name, up to 60 characters.' },
+      reset: { type: 'boolean', description: 'Restore the repository name.' },
+      hidden: { type: 'boolean', description: 'true keeps the project name off cards; false shows it again.' },
+    }, required: ['project'], additionalProperties: false },
+  },
+  {
+    name: 'list_projects',
+    title: 'List projects',
+    description: 'Every project with its display name, repository path, session count and time — use before renaming.',
+    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'weekly_snap',
+    title: 'Weekly Snap',
+    description:
+      'A 1080×1350 card for one Monday-to-Sunday week: agent time per day, sessions, active days, ' +
+      'projects, tool calls, estimated API cost and the longest session. An unfinished week is ' +
+      'marked "this week so far". Agent time is summed across sessions, so parallel agents can ' +
+      'exceed 24h a day — say so if you repeat the numbers.',
+    inputSchema: { type: 'object', properties: {
+      period: { type: 'string', description: 'this (default), last, or a date YYYY-MM-DD inside the period.' },
+      title: { type: 'string', description: 'Replace the headline, e.g. "What I shipped". Never inferred.' },
+      hide_projects: { type: 'boolean', description: 'Swap project names for Project A/B/C before sharing.' },
+    }, additionalProperties: false },
+  },
+  {
+    name: 'monthly_snap',
+    title: 'Monthly Snap',
+    description:
+      'A 1080×1350 card for one calendar month: a Monday-first heatmap of agent time, sessions, ' +
+      'active days, projects by time, and a featured session. The feature is labelled "Month\'s pick" ' +
+      'only when the user chose it via `pick`; otherwise it is the longest session, labelled as such.',
+    inputSchema: { type: 'object', properties: {
+      period: { type: 'string', description: 'this (default), last, or a date YYYY-MM-DD inside the period, or YYYY-MM.' },
+      title: { type: 'string', description: 'Replace the headline, e.g. "What I shipped". Never inferred.' },
+      hide_projects: { type: 'boolean', description: 'Swap project names for Project A/B/C before sharing.' },
+      pick: { type: 'string', description: 'Session or activity id the user chose to feature. Only pass one the user named.' },
+    }, additionalProperties: false },
   },
   {
     name: 'recap',
@@ -155,7 +221,7 @@ function logActivity(args) {
 }
 
 function recap({ from, to, title, athlete } = {}) {
-  let acts = all();
+  let acts = presentAll();
   if (from) acts = acts.filter((a) => a.date.slice(0, 10) >= from);
   if (to) acts = acts.filter((a) => a.date.slice(0, 10) <= to);
   if (athlete) acts = acts.filter((a) => a.athlete.toLowerCase() === athlete.toLowerCase());
@@ -187,19 +253,22 @@ async function snapshot({ session, photo } = {}) {
   const r = await logSession({ sessionId: t.id, transcriptPath: t.file });
   if (r.skipped) return text(`Nothing to log for ${t.id.slice(0, 8)} — ${r.skipped}.`);
 
-  // The card is drawn by logSession; redraw only when a photo is requested.
+  // Save the photo as an override before redrawing — drawing it once without
+  // saving it meant the next re-log quietly took it off again.
   let card = r.card;
   if (photo) {
     try {
-      const svg = renderCard({ ...r.activity, id: r.stored.id, date: r.stored.date },
-        { badges: r.badges, prs: r.prs, streak: streak(all()), photo: photoDataUri(resolvePhotoPath(photo, t.file)) });
-      card = writeCard(r.stored.id, svg).pngPath || card;
+      const file = resolvePhotoPath(photo, t.file);
+      photoDataUri(file);                                  // validate before storing
+      setOverride(t.id, { photo: file });
+      card = redrawCards((a) => a.id === r.stored.id)[0] || card;
     } catch (err) { return text(`Photo failed: ${err.message}`); }
   }
+  const shown = presentAll([{ ...r.activity, id: r.stored.id }])[0];
 
   const d = derive(r.activity);
   const lines = [
-    `🏅  ${r.activity.title}${r.activity.repo ? ` · ${r.activity.repo}` : ''}  (in progress)`,
+    `🏅  ${shown.title}${shown.project_name && !shown.project_hidden ? ` · ${shown.project_name}` : ''}  (in progress)`,
     `session ${t.id.slice(0, 8)} — picked by ${t.why}${t.why !== 'requested' ? '; pass `session` if that is the wrong one' : ''}`,
     `${d.distance_km.toFixed(2)} km  ·  ${Math.round(d.elevation_m)} m climbed  ·  ${fmtDuration(r.activity.duration_seconds)}  ·  ` +
       `${fmtPace(d.pace_min_per_km)} /km  ·  effort ${d.effort}`,
@@ -219,7 +288,7 @@ async function snapshot({ session, photo } = {}) {
 
 function setAthlete({ name } = {}) {
   const clean = String(name || '').trim().slice(0, 40);
-  if (!clean) return text('Give a name, e.g. set_athlete with name "Luka".');
+  if (!clean) return text('Give a name, e.g. set_athlete with name "Ada".');
   const previous = config().athlete || '(unset)';
   setConfig({ athlete: clean });
 
@@ -232,8 +301,57 @@ function setAthlete({ name } = {}) {
     `activit${n === 1 ? 'y' : 'ies'} — run \`node scripts/rerender.js\` to redraw the cards.`);
 }
 
+function snap(kind, { period, title, hide_projects: hideProjects = false, pick } = {}) {
+  let bounds;
+  try { bounds = resolvePeriod(kind, period); } catch (err) { return text(err.message); }
+  const s = summarize(presentAll(), bounds, { pick });
+  if (pick && !(s.feature && s.feature.selected)) return text(`No session matching "${pick}" in that ${kind}.`);
+
+  const svg = kind === 'week' ? renderWeekly(s, { title, hideProjects }) : renderMonthly(s, { title, hideProjects });
+  const key = ['snap', kind, dayKey(bounds.start.getTime()), hideProjects ? 'anon' : '', title ? 'titled' : '']
+    .filter(Boolean).join('-');
+  const { pngPath, svgPath, png } = writeCard(key, svg);
+
+  const lines = [
+    `${kind === 'week' ? 'Week' : 'Month'} of ${dayKey(bounds.start.getTime())}${s.partial ? ' (so far)' : ''}`,
+    `${s.sessions} sessions · ${s.activeDays} active days · ${s.projectCount} projects · ${fmtHM(s.moving)} agent time (summed across parallel sessions)`,
+    `${s.toolCalls.toLocaleString('en-US')} tool calls · ${s.costCoverage.priced ? 'est. ' + fmtUsd(s.cost) : 'no cost recorded'}` +
+      (s.costCoverage.priced < s.costCoverage.of ? ` (partial: ${s.costCoverage.priced} of ${s.costCoverage.of} sessions priced)` : ''),
+    s.feature ? `${s.feature.selected ? "Pick" : 'Longest session'}: ${s.feature.activity.title} · ${fmtHM(s.feature.seconds)}` : 'No recorded sessions.',
+    `Card: ${pngPath || svgPath}`,
+  ];
+  const content = [{ type: 'text', text: lines.join('\n') }];
+  if (png) content.push({ type: 'image', data: png.toString('base64'), mimeType: 'image/png' });
+  return { content };
+}
+
+function renameSessionTool({ session, title, reset } = {}) {
+  try {
+    if (!reset && title === undefined) return text('Give a title, or reset: true.');
+    const r = renameSession(session, reset ? null : title);
+    return text((r.reset ? `Reset to "${r.after}".` : `"${r.before}" → "${r.after}".`) +
+      `\nRedrew ${r.cards.length} card${r.cards.length === 1 ? '' : 's'}.`);
+  } catch (err) { return text(err.message); }
+}
+
+function renameProjectTool({ project, name, reset, hidden } = {}) {
+  try {
+    const opts = {};
+    if (reset) opts.name = null; else if (name !== undefined) opts.name = name;
+    if (hidden !== undefined) opts.hidden = hidden;
+    const r = renameProject(project, opts);
+    return text(`"${r.before}" → "${r.after}"${r.hidden ? ' (hidden on cards)' : ''}.` +
+      `\nRedrew ${r.cards.length} card${r.cards.length === 1 ? '' : 's'}.`);
+  } catch (err) { return text(err.message); }
+}
+
+function listProjectsTool() {
+  const list = listProjects();
+  return text(list.length ? list.map(describeProject).join('\n') : 'No projects recorded yet.');
+}
+
 function getProfile({ athlete } = {}) {
-  let acts = all();
+  let acts = presentAll();
   if (athlete) acts = acts.filter((a) => a.athlete.toLowerCase() === athlete.toLowerCase());
   if (!acts.length) return text('No activities logged yet. Call log_activity to open your account.');
 
@@ -275,7 +393,7 @@ function getProfile({ athlete } = {}) {
 }
 
 function listActivities({ limit = 10, athlete } = {}) {
-  let acts = all();
+  let acts = presentAll();
   if (athlete) acts = acts.filter((a) => a.athlete.toLowerCase() === athlete.toLowerCase());
   acts = acts.slice(-Math.max(1, Math.min(50, limit))).reverse();
   if (!acts.length) return text('Nothing logged yet.');
@@ -296,7 +414,7 @@ function leaderboard({ metric = 'distance', limit = 10 } = {}) {
   const fmt = { distance: (v) => v.toFixed(2) + ' km', elevation: (v) => Math.round(v) + ' m',
     duration: fmtDuration, effort: String, tokens: fmtNum, tool_calls: String }[metric] || String;
 
-  const acts = all().slice().sort((a, b) => get(b) - get(a)).slice(0, Math.max(1, Math.min(50, limit)));
+  const acts = presentAll().sort((a, b) => get(b) - get(a)).slice(0, Math.max(1, Math.min(50, limit)));
   if (!acts.length) return text('Nothing logged yet.');
   return text(`LEADERBOARD — ${metric}\n` + acts.map((a, i) =>
     `${String(i + 1).padStart(2)}. ${fmt(get(a)).padStart(10)}   ${a.title} (${a.athlete})`).join('\n'));
@@ -320,6 +438,11 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       case 'log_activity':    return logActivity(args);
       case 'get_profile':     return getProfile(args);
       case 'recap':           return recap(args);
+      case 'rename_session':  return renameSessionTool(args);
+      case 'rename_project':  return renameProjectTool(args);
+      case 'list_projects':   return listProjectsTool();
+      case 'weekly_snap':     return snap('week', args);
+      case 'monthly_snap':    return snap('month', args);
       case 'set_athlete':     return setAthlete(args);
       case 'snapshot':        return await snapshot(args);
       case 'list_activities': return listActivities(args);

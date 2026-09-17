@@ -104,3 +104,92 @@ export function upsertBySession(sessionId, activity) {
   return { created, activity: created ? activity : db.activities[i] };
   });
 }
+
+// Presentation choices — photo, route placement — live apart from measured data.
+// activities.json is rebuilt by every forced backfill and replaced by every
+// re-log; this file is touched by neither, so a photo set once stays set.
+const OVERRIDES = path.join(HOME, 'overrides.json');
+// title is a user rename; clearing it restores the generated title.
+export const PRESENTATION_KEYS = ['photo', 'route', 'title'];
+
+export const overrideKey = (a) => a.session_id || a.id;
+
+export function overrides() {
+  try { return JSON.parse(fs.readFileSync(OVERRIDES, 'utf8')); } catch { return {}; }
+}
+
+// null removes a key; an entry with no keys left is dropped.
+export function setOverride(key, patch) {
+  return withLock(() => {
+    const table = overrides();
+    const cur = { ...(table[key] || {}) };
+    for (const [k, v] of Object.entries(patch)) {
+      if (!PRESENTATION_KEYS.includes(k)) continue;
+      if (v === null || v === undefined) delete cur[k]; else cur[k] = v;
+    }
+    if (Object.keys(cur).length) table[key] = cur; else delete table[key];
+    ensure();
+    const tmp = `${OVERRIDES}.tmp.${process.pid}.${Math.random().toString(36).slice(2, 8)}`;
+    fs.writeFileSync(tmp, JSON.stringify(table, null, 2));
+    fs.renameSync(tmp, OVERRIDES);
+    return cur;
+  });
+}
+
+/* ---------------- projects ---------------- */
+
+// A project is identified by its repository root path, never by its name: two
+// repositories both called "web" are different projects, and giving two
+// projects the same display name must not merge them. Activities logged before
+// paths were recorded fall back to a name-scoped id until they are re-logged.
+const PROJECTS = path.join(HOME, 'projects.json');
+
+export const projectId = (a) => (a.repo_path ? a.repo_path : a.repo ? `name:${a.repo}` : null);
+
+export function projectsTable() {
+  try { return JSON.parse(fs.readFileSync(PROJECTS, 'utf8')); } catch { return {}; }
+}
+
+// patch.name: display name (null resets); patch.hidden: keep it off shared cards.
+export function setProject(id, patch) {
+  return withLock(() => {
+    const table = projectsTable();
+    const cur = { ...(table[id] || {}) };
+    if ('name' in patch) { if (patch.name) cur.name = patch.name; else delete cur.name; }
+    if ('hidden' in patch) { if (patch.hidden) cur.hidden = true; else delete cur.hidden; }
+    if (Object.keys(cur).length) table[id] = cur; else delete table[id];
+    ensure();
+    const tmp = `${PROJECTS}.tmp.${process.pid}.${Math.random().toString(36).slice(2, 8)}`;
+    fs.writeFileSync(tmp, JSON.stringify(table, null, 2));
+    fs.renameSync(tmp, PROJECTS);
+    return cur;
+  });
+}
+
+/* ---------------- presentation ---------------- */
+
+function present(a, ov, pj) {
+  const legacy = {};
+  for (const k of PRESENTATION_KEYS) if (a[k] !== undefined) legacy[k] = a[k];
+  const out = { ...a, ...legacy, ...(ov[overrideKey(a)] || {}) };
+  // Keep the generated title reachable, so a rename can always be undone.
+  out.generated_title = a.title;
+  const id = projectId(a);
+  const proj = (id && pj[id]) || {};
+  out.project_id = id;
+  out.project_name = proj.name || a.repo || '';
+  out.project_hidden = Boolean(proj.hidden);
+  return out;
+}
+
+// The activity as it should be shown: renamed title, project display name,
+// photo and route. The measured record underneath is never modified.
+export function withPresentation(a) {
+  return present(a, overrides(), projectsTable());
+}
+
+// Same, for many activities, reading each table once.
+export function presentAll(list = all()) {
+  const ov = overrides(), pj = projectsTable();
+  return list.map((a) => present(a, ov, pj));
+}
