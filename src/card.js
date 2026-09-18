@@ -98,6 +98,25 @@ function buildRoute(a, d) {
 // The footer is the diff and nothing else. Token accounting truncated here and
 // belongs in the text output; zero churn is left out rather than shown, because
 // for Cursor it usually means "not recorded", not "nothing changed".
+// The client as a tinted pill: its own artwork when the user has supplied some,
+// otherwise a dot in the product's colour. No logo ships with this repo, so the
+// dot is what most cards show — still a mark rather than more grey text.
+function clientChip(ci, x, y, h = 34) {
+  const label = ci.label;
+  const pad = 13, mark = 20, gap = 9;
+  const w = pad * 2 + mark + gap + label.length * charW(20, true);
+  const top = y - h + 9;
+  const cy = top + h / 2;
+  const art = ci.logo
+    ? `<image href="${ci.logo}" x="${x + pad}" y="${cy - mark / 2}" width="${mark}" height="${mark}" preserveAspectRatio="xMidYMid meet"/>`
+    : `<circle cx="${x + pad + mark / 2}" cy="${cy}" r="${mark / 2 - 3}" fill="${ci.tint}"/>`;
+  return `<g>
+    <rect x="${x}" y="${top}" width="${w.toFixed(1)}" height="${h}" rx="${h / 2}" fill="${ci.tint}" fill-opacity="0.13" stroke="${ci.tint}" stroke-opacity="0.34"/>
+    ${art}
+    <text x="${x + pad + mark + gap}" y="${cy + 7}" fill="${ci.tint}" font-size="20" font-weight="700">${esc(label)}</text>
+  </g>`;
+}
+
 function footerLine(a) {
   const parts = [];
   if (a.lines_added || a.lines_removed) parts.push(`+${fmtNum(a.lines_added)}`, `−${fmtNum(a.lines_removed)}`);
@@ -208,9 +227,12 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
     { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   const project = a.project_hidden ? '' : (a.project_name ?? a.repo);
   const subtitle = [dateStr, project].filter(Boolean).join('  ·  ');
-  const gearParts = [a.model, (clientInfo(a.client) || {}).label].filter(Boolean);
+  const client = clientInfo(a.client);
+  // The model reads as text; the client reads as a chip, so which tool ran the
+  // session is legible at a glance rather than as the tail of a grey line.
+  const gearParts = [a.model].filter(Boolean);
   // The band between title and map holds two lines; gear takes one when present.
-  const summaryLines = a.summary ? wrap(a.summary, 24, W - 2 * P, gearParts.length ? 1 : 2) : [];
+  const summaryLines = a.summary ? wrap(a.summary, 24, W - 2 * P, (gearParts.length || client) ? 1 : 2) : [];
 
   // Chips: personal records first — they are the rarest thing on the card.
   const items = [...prs.map((p) => ({ t: p.name + ' PR', pr: true })),
@@ -280,13 +302,12 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
   <text x="${P}" y="228" fill="${C.ink}" font-size="56" font-weight="700" letter-spacing="-1.2">${esc(fit(a.title, 56, W - 2 * P, true))}</text>
   ${summaryLines.map((l, i) => `<text x="${P}" y="${272 + i * 32}" fill="${C.muted}" font-size="24">${esc(l)}</text>`).join('')}
   ${(() => {
-    const ci = clientInfo(a.client);
-    const gear = gearParts;
-    if (!gear.length) return '';
+    if (!gearParts.length && !client) return '';
     const y = 272 + summaryLines.length * 32;
-    const logoW = ci && ci.logo ? 30 : 0;
-    return (ci && ci.logo ? `<image href="${ci.logo}" x="${P}" y="${y - 17}" width="22" height="22" preserveAspectRatio="xMidYMid meet"/>` : '') +
-      `<text x="${P + logoW}" y="${y}" fill="${C.label}" font-size="22" font-weight="600">${esc(gear.join('  ·  '))}</text>`;
+    const model = gearParts.join('  ·  ');
+    const modelW = model ? model.length * charW(22, true) : 0;
+    return (model ? `<text x="${P}" y="${y}" fill="${C.label}" font-size="22" font-weight="600">${esc(model)}</text>` : '')
+      + (client ? clientChip(client, model ? P + modelW + 18 : P, y) : '');
   })()}
 
   <!-- map -->

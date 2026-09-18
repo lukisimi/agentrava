@@ -16,7 +16,8 @@
     "backfill": "node scripts/backfill.mjs",
     "setup": "node scripts/install.mjs",
     "codex-backfill": "node scripts/codex-backfill.mjs",
-    "cursor-backfill": "node scripts/cursor-backfill.mjs"
+    "cursor-backfill": "node scripts/cursor-backfill.mjs",
+    "logo": "node scripts/logo.mjs"
   },
   "license": "MIT",
   "dependencies": {

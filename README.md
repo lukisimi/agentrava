@@ -435,11 +435,26 @@ session never redraws its route.
 Cards name the client in the header. Known ids: `claude-code`, `claude`, `cursor`,
 `openai`, `codex`, `grok`, `copilot`, `windsurf`, `zed`.
 
+The client is drawn as a **tinted chip** under the title — Claude Code terracotta,
+Codex green, Cursor white — so which tool ran the session reads at a glance
+instead of trailing a grey line.
+
 **No logo artwork ships with this repo.** Those marks are trademarks, and bundling
 them into an MIT repo means redistributing brand assets that most brand guidelines
 restrict. Naming a product is ordinary nominative use; shipping its logo is not.
-Put your own file at `~/.agentrava/logos/<client>.svg` (or `.png`, under 512 KB)
-and it is drawn beside the name.
+Until you install one the chip shows a coloured dot.
+
+```bash
+node scripts/logo.mjs                      # what is installed, and for how many sessions
+node scripts/logo.mjs codex ~/openai.svg   # install one
+node scripts/logo.mjs codex chat           # use an image you just pasted into the chat
+node scripts/logo.mjs codex --remove
+```
+
+The file lands in `~/.agentrava/logos/<client>.svg` (or `.png`, under 512 KB) and
+every card for that client is redrawn. Whether you may put a given mark on a card
+you post is between you and that owner's brand guidelines — this repo takes no
+position beyond not shipping the artwork itself.
 
 ### Photos
 
