@@ -56,6 +56,7 @@ export function clean(input = {}) {
     tests_passed: n(input.tests_passed),
     tests_failed: n(input.tests_failed),
     errors_recovered: n(input.errors_recovered),
+    errors_environmental: n(input.errors_environmental),
     edits_accepted: n(input.edits_accepted),
     edits_rejected: n(input.edits_rejected),
     languages: (Array.isArray(input.languages) ? input.languages : []).slice(0, 6).map(String),

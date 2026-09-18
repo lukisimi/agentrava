@@ -12,6 +12,7 @@ import readline from 'node:readline';
 import { creditInterval, roundDaily } from './periods.js';
 import { dominantModel } from './models.js';
 import { costOf, LONG_CONTEXT_TOKENS } from './pricing.js';
+import { isEnvironmentError } from './errors.js';
 import { buildProfile } from './session.js';
 
 export const SESSIONS_DIR = path.join(os.homedir(), '.codex', 'sessions');
@@ -60,9 +61,18 @@ const countDiff = (diff) => {
   return { added, removed };
 };
 
+// Where a failed Codex item explains itself. An MCP call puts it in `result`;
+// a shell command has stderr and its output. Serialising the whole item instead
+// would test the command line and the id, which is how a session that merely
+// printed the word "rejected" got counted as a refusal.
+const failureText = (item) => {
+  if (item.result) return typeof item.result === 'string' ? item.result : JSON.stringify(item.result);
+  return item.stderr || item.aggregated_output || item.formatted_output || '';
+};
+
 export async function parseCodexSession(file) {
   const s = {
-    toolCalls: 0, errors: 0, files: new Set(), added: 0, removed: 0,
+    toolCalls: 0, errors: 0, envErrors: 0, files: new Set(), added: 0, removed: 0,
     tokens: 0, tokIn: 0, tokOut: 0, tokCacheWrite: 0, tokCacheRead: 0, costUsd: 0,
     first: null, last: null, moving: 0, daily: {}, prompt: '', cwd: '',
     models: {}, events: [], shellFiles: new Set(),
@@ -133,8 +143,11 @@ export async function parseCodexSession(file) {
     if (p.type !== 'item_completed') continue;
     const item = p.item || {};
     if (item.status === 'failed') {
-      s.errors++;
-      s.events.push({ at: atMoving, gain: 120 });
+      if (isEnvironmentError(failureText(item))) s.envErrors++;
+      else {
+        s.errors++;
+        s.events.push({ at: atMoving, gain: 120 });
+      }
     }
     if (item.type !== 'FileChange') continue;
     for (const [file_, change] of Object.entries(item.changes || {})) {

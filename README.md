@@ -96,6 +96,41 @@ elevation is *friction*, 58% of it from errors. They correlate 0.79 with each
 other: overlapping, but about a third of elevation is information distance
 doesn't carry, which is what separates a long easy session from a short brutal one.
 
+### Not every failed tool call is friction
+
+An error is a tool result the client flagged as failed. Sampled across 166 real
+Claude Code errors: 45% a shell command exiting non-zero, 11% bad arguments or a
+missing file, 7% a browser step, 19% app-level errors from the user's own tools —
+and **12% nothing to do with the agent at all**: the human declining a tool call,
+the permission layer blocking one, a model or MCP server briefly unavailable.
+
+Those last ones are counted separately (`errors_environmental`) and **left out of
+the climb**, because 120 m of elevation and a loop in the route should mean work
+that had to be redone, not a moment where someone hit Escape. Across this store
+that removed 89 errors and 8 km of climb, and demoted 4 cards from Debug.
+
+The test, in [`src/errors.js`](src/errors.js), is a phrase list run against the
+**first 300 characters** of the failure text — these failures announce themselves
+in their first line, while a long command output can mention "rate limit"
+anywhere. 609 *successful* Cursor tool results contain that phrase and not one of
+them is a rate limit. Deliberately excluded from the list: `permission denied`
+(a real filesystem failure the agent must work around), a bare `timed out`
+(usually its own command hanging) and `connection refused` (usually a dev server
+it forgot to start).
+
+Each client hides the text somewhere different — Claude Code in the
+`tool_result`, Cursor in `toolFormerData.result`, Codex in a failed item's
+`result` for an MCP call or `stderr` for a shell one. Serialising a whole Codex
+item instead tested the command line and the id, which counted a session that
+merely *printed* the word "rejected" as a refusal.
+
+**Errors are not a measure of inefficiency.** Their raw count is mostly a size
+measurement — 0.87 against tool calls. As a rate (errors per 100 tool calls) they
+correlate 0.08 with tokens per line changed and −0.01 with seconds per line
+changed. Across 78 sessions, a 5× difference in error rate bought 20% more tokens
+per line and 18% *less* time per line: no signal. Elevation honestly means
+eventful, not wasteful.
+
 **Raw tokens cannot rank efficiency.** They correlate 0.72 with distance, so the
 number mostly says how big a session was. Economy (tokens per km) correlates 0.08
 with distance — size-independent, and therefore actually comparable. It measures

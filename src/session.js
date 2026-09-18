@@ -31,6 +31,7 @@ import { photoFor } from './photo.js';
 import { creditInterval, roundDaily } from './periods.js';
 import { createHash } from 'node:crypto';
 import { clean } from './metrics.js';
+import { isEnvironmentError } from './errors.js';
 import { dominantModel } from './models.js';
 import { costOf } from './pricing.js';
 import { badgesFor, prsFor, streak } from './achievements.js';
@@ -152,7 +153,7 @@ function workingDir(cwds, fallback) {
 
 async function parseTranscript(file) {
   const s = {
-    toolCalls: 0, tokens: 0, errors: 0, files: new Set(),
+    toolCalls: 0, tokens: 0, errors: 0, envErrors: 0, files: new Set(),
     added: 0, removed: 0, first: null, last: null, moving: 0, prompt: '', cwd: '',
     shellFiles: new Set(), models: {}, cwds: {},
     events: [],   // { at: moving-ms so far, gain: elevation earned }
@@ -214,6 +215,9 @@ async function parseTranscript(file) {
     if (Array.isArray(content)) {
       for (const b of content) {
         if (b && b.type === 'tool_result' && b.is_error) {
+          const txt = typeof b.content === 'string' ? b.content
+            : Array.isArray(b.content) ? b.content.map((x) => (x && x.text) || '').join(' ') : '';
+          if (isEnvironmentError(txt)) { s.envErrors++; continue; }
           s.errors++;
           // Same weights as the elevation formula, so the profile's area is the climb.
           s.events.push({ at: s.atMoving || 0, gain: 120 });
@@ -336,6 +340,8 @@ export function storeSession({ sessionId, stats: s, cwd, drawCard = true, dry = 
     profile: s.profile || buildProfile(s.events, s.moving),
     daily: roundDaily(s.daily),
     errors_recovered: Math.min(s.errors, 20),
+    // Counted, but kept out of the climb: see errors.js.
+    errors_environmental: s.envErrors || 0,
     edits_accepted: s.accepted || 0,
     edits_rejected: s.rejected || 0,
     languages,

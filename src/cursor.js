@@ -12,6 +12,7 @@ import { execFileSync } from 'node:child_process';
 import { dominantModel } from './models.js';
 import { buildProfile } from './session.js';
 import { creditInterval, roundDaily } from './periods.js';
+import { sqlEnvironmental } from './errors.js';
 
 export const DEFAULT_DB = path.join(os.homedir(),
   'Library', 'Application Support', 'Cursor', 'User', 'globalStorage', 'state.vscdb');
@@ -54,6 +55,10 @@ function query(db, sql) {
 }
 
 const J = (p) => `json_extract(value,'$.${p}')`;
+// Cursor puts the failure text here; errors.js decides which failures are the
+// environment rather than the agent, and those are kept out of the climb.
+const ERR_TEXT = J('toolFormerData.result');
+const ENV_ERR = sqlEnvironmental(ERR_TEXT);
 // rawArgs is not always valid JSON — a streamed edit can be cut off mid-write, and
 // json_extract aborts the entire query on the first malformed row. Guard every read.
 const RAW = J('toolFormerData.rawArgs');
@@ -76,7 +81,7 @@ function scanClimb(db) {
   const out = new Map();
   for (const [c, at, err, edit] of query(db, `
     SELECT substr(key,10,36) c, ${J('createdAt')},
-           ${J('toolFormerData.status')}='error',
+           ${J('toolFormerData.status')}='error' AND NOT ${ENV_ERR},
            ${IS_EDIT}
     FROM cursorDiskKV
     WHERE key LIKE 'bubbleId:%' AND ${J('toolFormerData.name')} IS NOT NULL
@@ -106,7 +111,8 @@ function scanBubbles(db) {
     SELECT substr(key,10,36) c,
            count(*),
            sum(${J('toolFormerData.name')} IS NOT NULL),
-           sum(${J('toolFormerData.status')}='error'),
+           sum(${J('toolFormerData.status')}='error' AND NOT ${ENV_ERR}),
+           sum(${J('toolFormerData.status')}='error' AND ${ENV_ERR}),
            sum(${J('toolFormerData.userDecision')}='accepted'),
            sum(${J('toolFormerData.userDecision')}='rejected'),
            coalesce(sum(${J('tokenCount.inputTokens')}),0) + coalesce(sum(${J('tokenCount.outputTokens')}),0),
@@ -116,9 +122,9 @@ function scanBubbles(db) {
     FROM cursorDiskKV WHERE key LIKE 'bubbleId:%' GROUP BY c;`);
 
   const out = new Map();
-  for (const [c, bubbles, tools, errors, acc, rej, tok, first, last, firstPrompt] of rows) {
+  for (const [c, bubbles, tools, errors, envErrors, acc, rej, tok, first, last, firstPrompt] of rows) {
     out.set(c, {
-      id: c, bubbles: +bubbles, toolCalls: +tools, errors: +errors,
+      id: c, bubbles: +bubbles, toolCalls: +tools, errors: +errors, envErrors: +envErrors,
       accepted: +acc, rejected: +rej, tokens: +tok,
       first: Date.parse(first) || null, last: Date.parse(last) || null,
       firstAt: first, lastAt: last,
