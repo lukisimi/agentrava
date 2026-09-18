@@ -101,19 +101,18 @@ function buildRoute(a, d) {
 // The client as a tinted pill: its own artwork when the user has supplied some,
 // otherwise a dot in the product's colour. No logo ships with this repo, so the
 // dot is what most cards show — still a mark rather than more grey text.
-function clientChip(ci, x, y, h = 34) {
+function clientChip(ci, x, y, h = 48) {
   const label = ci.label;
-  const pad = 13, mark = 20, gap = 9;
-  const w = pad * 2 + mark + gap + label.length * charW(20, true);
-  const top = y - h + 9;
-  const cy = top + h / 2;
+  const pad = 16, mark = 30, gap = 11, size = 22;
+  const w = pad * 2 + mark + gap + label.length * charW(size, true);
+  const cy = y - 9;                                    // centred on the gear line
   const art = ci.logo
     ? `<image href="${ci.logo}" x="${x + pad}" y="${cy - mark / 2}" width="${mark}" height="${mark}" preserveAspectRatio="xMidYMid meet"/>`
-    : `<circle cx="${x + pad + mark / 2}" cy="${cy}" r="${mark / 2 - 3}" fill="${ci.tint}"/>`;
+    : `<circle cx="${x + pad + mark / 2}" cy="${cy}" r="${mark / 2 - 4}" fill="${ci.tint}"/>`;
   return `<g>
-    <rect x="${x}" y="${top}" width="${w.toFixed(1)}" height="${h}" rx="${h / 2}" fill="${ci.tint}" fill-opacity="0.13" stroke="${ci.tint}" stroke-opacity="0.34"/>
+    <rect x="${x}" y="${cy - h / 2}" width="${w.toFixed(1)}" height="${h}" rx="${h / 2}" fill="${ci.tint}" fill-opacity="0.13" stroke="${ci.tint}" stroke-opacity="0.34"/>
     ${art}
-    <text x="${x + pad + mark + gap}" y="${cy + 7}" fill="${ci.tint}" font-size="20" font-weight="700">${esc(label)}</text>
+    <text x="${x + pad + mark + gap}" y="${cy + 8}" fill="${ci.tint}" font-size="${size}" font-weight="700">${esc(label)}</text>
   </g>`;
 }
 
@@ -303,7 +302,9 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
   ${summaryLines.map((l, i) => `<text x="${P}" y="${272 + i * 32}" fill="${C.muted}" font-size="24">${esc(l)}</text>`).join('')}
   ${(() => {
     if (!gearParts.length && !client) return '';
-    const y = 272 + summaryLines.length * 32;
+    // The chip is taller than a line of text, so without a summary above it the
+    // line drops a little to keep clear of the title's descenders.
+    const y = 272 + summaryLines.length * 32 + (summaryLines.length ? 0 : 8);
     const model = gearParts.join('  ·  ');
     const modelW = model ? model.length * charW(22, true) : 0;
     return (model ? `<text x="${P}" y="${y}" fill="${C.label}" font-size="22" font-weight="600">${esc(model)}</text>` : '')
