@@ -11,6 +11,7 @@ import os from 'node:os';
 import readline from 'node:readline';
 import { creditInterval, roundDaily } from './periods.js';
 import { dominantModel } from './models.js';
+import { costOf, LONG_CONTEXT_TOKENS } from './pricing.js';
 import { buildProfile } from './session.js';
 
 export const SESSIONS_DIR = path.join(os.homedir(), '.codex', 'sessions');
@@ -66,7 +67,10 @@ export async function parseCodexSession(file) {
     first: null, last: null, moving: 0, daily: {}, prompt: '', cwd: '',
     models: {}, events: [], shellFiles: new Set(),
   };
-  let prevTs = null, atMoving = 0, usage = null;
+  let prevTs = null, atMoving = 0, usage = null, turnModel = '';
+  // Which model and price tier each request ran under. Used for proportions
+  // only — see the cost note at the bottom of this function.
+  const mix = new Map();
 
   const rl = readline.createInterface({
     input: fs.createReadStream(file, { encoding: 'utf8' }), crlfDelay: Infinity,
@@ -93,7 +97,7 @@ export async function parseCodexSession(file) {
     const p = d.payload || {};
     if (d.type === 'session_meta' && p.cwd && !s.cwd) s.cwd = p.cwd;
     if (d.type === 'turn_context') {
-      if (p.model) s.models[p.model] = (s.models[p.model] || 0) + 1;
+      if (p.model) { s.models[p.model] = (s.models[p.model] || 0) + 1; turnModel = p.model; }
       if (p.cwd && !s.cwd) s.cwd = p.cwd;
     }
 
@@ -110,7 +114,21 @@ export async function parseCodexSession(file) {
     if (d.type !== 'event_msg') continue;
 
     // Cumulative, so the last one wins rather than being summed.
-    if (p.type === 'token_count' && p.info && p.info.total_token_usage) usage = p.info.total_token_usage;
+    if (p.type === 'token_count' && p.info && p.info.total_token_usage) {
+      usage = p.info.total_token_usage;
+      const lu = p.info.last_token_usage;
+      if (lu) {
+        // OpenAI prices a whole request at the higher tier once its prompt
+        // passes 272K input tokens.
+        const key = `${turnModel}|${(lu.input_tokens || 0) > LONG_CONTEXT_TOKENS ? 1 : 0}`;
+        const b = mix.get(key) || { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 };
+        b.cacheRead += lu.cached_input_tokens || 0;
+        b.input += Math.max(0, (lu.input_tokens || 0) - (lu.cached_input_tokens || 0));
+        b.cacheWrite += lu.cache_write_input_tokens || 0;
+        b.output += lu.output_tokens || 0;
+        mix.set(key, b);
+      }
+    }
 
     if (p.type !== 'item_completed') continue;
     const item = p.item || {};
@@ -141,10 +159,25 @@ export async function parseCodexSession(file) {
     s.tokOut = usage.output_tokens || 0;
     s.tokens = s.tokIn + s.tokCacheWrite + s.tokOut;
   }
-  // Cost is left unset: OpenAI list prices are not bundled, and inventing them
-  // would put a fabricated number next to measured ones.
+  // Cost. The per-request figures are the only place the model and the price
+  // tier are visible, but summing them overstates a session that replays part of
+  // its history — one rollout in four came out 5% high. So the cumulative totals
+  // above stay authoritative for how many tokens there were, and the per-request
+  // figures decide only how those tokens divide between models and tiers.
+  // A request whose model has no published rate (codex-auto-review) prices at
+  // zero rather than being guessed at, the same way an unknown Claude model does.
+  if (usage && mix.size) {
+    const tally = { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 };
+    for (const b of mix.values()) for (const k of Object.keys(tally)) tally[k] += b[k];
+    const actual = { input: s.tokIn, cacheRead: s.tokCacheRead, cacheWrite: s.tokCacheWrite, output: s.tokOut };
+    for (const [key, b] of mix) {
+      const [model, long] = key.split('|');
+      const share = {};
+      for (const k of Object.keys(tally)) share[k] = tally[k] ? (b[k] / tally[k]) * actual[k] : 0;
+      s.costUsd += costOf({ model, ...share, longContext: long === '1' }) || 0;
+    }
+  }
   s.model = dominantModel(s.models);
   s.profile = buildProfile(s.events, s.moving);
-  s.daily = s.daily;
   return s;
 }

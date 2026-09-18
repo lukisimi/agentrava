@@ -320,7 +320,7 @@ Measured across the 24 sessions above the logging floor:
 | files and line churn | 100% of sessions that changed a file | ✅ exact, from `FileChange` diffs |
 | errors | 54% | ✅ `item_completed` with `status: "failed"` |
 | model | 100% | ✅ from `turn_context` |
-| **est. API cost** | **0%** | ❌ deliberate — see below |
+| est. API cost | 100% | ✅ OpenAI list prices, per model and tier |
 | accepted / rejected edits | 0% | ❌ not recorded |
 
 Token totals are cumulative in the log, so the last `token_count` wins rather
@@ -328,9 +328,20 @@ than being summed, and `input_tokens` includes the cached portion — the cached
 tokens are subtracted back out so a Codex card's token count means what a Claude
 Code card's does.
 
-**Cost stays blank.** Only Anthropic list prices are bundled (`src/pricing.js`);
-guessing OpenAI's would put a fabricated number next to measured ones, so Codex
-cards show `—` for est. API cost rather than `$0.00`.
+**Pricing a Codex session takes two passes.** The cumulative totals say how many
+tokens there were; the per-request `last_token_usage` figures say which model and
+which price tier they ran under. Summing the per-request figures instead would
+overstate a session that replays part of its own history — one rollout in four
+came out 5% high — so the totals stay authoritative and the per-request numbers
+decide only how the tokens divide.
+
+OpenAI charges a whole request at 2× input and 1.5× output once its prompt passes
+272K input tokens. Across 3,329 requests here the largest prompt was 245K, and
+Codex ran a 258K context window, so the higher tier never applied — but it is
+implemented rather than assumed away.
+
+Codex's own `codex-auto-review` model has no published rate. Its turns price at
+zero rather than being guessed at, exactly as an unrecognised Claude model does.
 
 Two things in the log are not what they look like:
 
@@ -478,8 +489,14 @@ subtitle before you post one, or turn summaries off entirely with
 ## Cost
 
 Claude Code records four token classes per message, so a session is priced per
-message at whatever model produced it. Rates are Anthropic list prices; cache
-writes bill at 1.25× input, cache reads at 0.1×.
+message at whatever model produced it. Codex is priced per request — see above.
+Rates are Anthropic and OpenAI list prices (`src/pricing.js`, read from their
+docs on 18 September 2026); both vendors bill cache writes at 1.25× input and
+cache reads at 0.1×, so one table shape covers both.
+
+A model with no published rate is left unpriced rather than guessed at, and a
+card with no price shows `—` rather than `$0.00`. Snaps say how many of their
+sessions were priced, so a gap is visible instead of silent.
 
 **This is not a bill.** A subscription does not charge per token. The figure is
 what the session *would* have cost on the API — useful for comparing sessions,
