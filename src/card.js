@@ -4,6 +4,7 @@ import { fmtUsd } from './pricing.js';
 import { avatarSvg } from './avatar.js';
 
 const W = 1080, H = 1350, P = 64;
+const MARK = 58;                     // the client logo in the header corner
 export const C = {
   bg0: '#0d0f13', bg1: '#171b23', panel: '#1b212b', panel2: '#232a36',
   ink: '#ffffff', muted: '#8b93a3', dim: '#5b6373', brand: '#fc5200',
@@ -227,6 +228,11 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
   const project = a.project_hidden ? '' : (a.project_name ?? a.repo);
   const subtitle = [dateStr, project].filter(Boolean).join('  ·  ');
   const client = clientInfo(a.client);
+  // With artwork installed the mark goes big in the top right corner and the
+  // type and streak shift left of it; without artwork there is nothing to put
+  // there, so the client stays a named chip under the title.
+  const cornerMark = !!(client && client.logo);
+  const rightX = W - P - (cornerMark ? MARK + 22 : 0);
   // The model reads as text; the client reads as a chip, so which tool ran the
   // session is legible at a glance rather than as the tail of a grey line.
   const gearParts = [a.model].filter(Boolean);
@@ -294,8 +300,9 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
   ${avatarSvg({ cx: P + 40, cy: 103, r: 40, initial: esc(a.athlete.slice(0, 1).toUpperCase()), accent, ink: C.ink, id: 'avatar' })}
   <text x="${P + 96}" y="95" fill="${C.ink}" font-size="29" font-weight="700">${esc(fit(a.athlete, 29, 500, true))}</text>
   <text x="${P + 96}" y="127" fill="${C.muted}" font-size="21">${esc(fit(subtitle, 21, 700))}</text>
-  <text x="${W - P}" y="98" fill="${C.label}" font-size="19" font-weight="700" letter-spacing="2" text-anchor="end">${esc(a.type.toUpperCase())}</text>
-  ${streak > 1 ? `<text x="${W - P}" y="127" fill="${accent}" font-size="21" font-weight="700" text-anchor="end">${streak}-day streak</text>` : ''}
+  ${cornerMark ? `<image href="${client.logo}" x="${W - P - MARK}" y="${103 - MARK / 2}" width="${MARK}" height="${MARK}" preserveAspectRatio="xMidYMid meet"/>` : ''}
+  <text x="${rightX}" y="98" fill="${C.label}" font-size="19" font-weight="700" letter-spacing="2" text-anchor="end">${esc(a.type.toUpperCase())}</text>
+  ${streak > 1 ? `<text x="${rightX}" y="127" fill="${accent}" font-size="21" font-weight="700" text-anchor="end">${streak}-day streak</text>` : ''}
 
   <!-- title -->
   <text x="${P}" y="228" fill="${C.ink}" font-size="56" font-weight="700" letter-spacing="-1.2">${esc(fit(a.title, 56, W - 2 * P, true))}</text>
@@ -308,7 +315,7 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
     const model = gearParts.join('  ·  ');
     const modelW = model ? model.length * charW(22, true) : 0;
     return (model ? `<text x="${P}" y="${y}" fill="${C.label}" font-size="22" font-weight="600">${esc(model)}</text>` : '')
-      + (client ? clientChip(client, model ? P + modelW + 18 : P, y) : '');
+      + (client && !cornerMark ? clientChip(client, model ? P + modelW + 18 : P, y) : '');
   })()}
 
   <!-- map -->

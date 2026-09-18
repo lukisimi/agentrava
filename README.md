@@ -435,9 +435,11 @@ session never redraws its route.
 Cards name the client in the header. Known ids: `claude-code`, `claude`, `cursor`,
 `openai`, `codex`, `grok`, `copilot`, `windsurf`, `zed`.
 
-The client is drawn as a **tinted chip** under the title — Claude Code terracotta,
-Codex green, Cursor white — so which tool ran the session reads at a glance
-instead of trailing a grey line.
+**With a logo installed, the mark sits large in the top-right corner** — 58px,
+balancing the athlete's avatar on the left, with the activity type and streak
+shifted in beside it. Without one there is nothing to put there, so the client
+stays a **tinted chip** under the title instead — Claude Code terracotta, Codex
+green, Cursor white — rather than trailing the gear line as grey text.
 
 **No logo artwork ships with this repo.** Those marks are trademarks, and bundling
 them into an MIT repo means redistributing brand assets that most brand guidelines
