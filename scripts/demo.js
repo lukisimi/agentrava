@@ -1,12 +1,28 @@
-// Renders a few contrasting cards so layout regressions are obvious.
-import { clean } from '../src/metrics.js';
-import { badgesFor } from '../src/achievements.js';
-import { renderCard } from '../src/card.js';
-import { writeCard } from '../src/render.js';
-import { renderRecap } from '../src/recap.js';
-import { renderWeekly, renderMonthly } from '../src/snap.js';
-import { summarize } from '../src/summary.js';
-import { resolvePeriod, dayKey } from '../src/periods.js';
+// Renders a few contrasting cards so layout regressions are obvious, and
+// generates the images committed to docs/.
+//
+// These are published, so they must not pick up anything local. The renderers
+// read config for the athlete name and the avatar, so the whole demo runs
+// against a throwaway AGENTRAVA_HOME — set before any import, since the store
+// resolves its home at module load. (Without this, the "Sam Rivera" examples
+// quietly rendered with the local user's profile picture.)
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+process.env.AGENTRAVA_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'agentrava-demo-'));
+
+const { clean } = await import('../src/metrics.js');
+const { badgesFor } = await import('../src/achievements.js');
+const { renderCard } = await import('../src/card.js');
+const { writeCard } = await import('../src/render.js');
+const { renderRecap } = await import('../src/recap.js');
+const { renderWeekly, renderMonthly } = await import('../src/snap.js');
+const { summarize } = await import('../src/summary.js');
+const { resolvePeriod, dayKey } = await import('../src/periods.js');
+
+const DOCS = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', 'docs');
+const publish = (from, name) => { fs.copyFileSync(from, path.join(DOCS, name)); return `docs/${name}`; };
 
 const SAMPLES = [
   ['demo', { type: 'debug', repo: 'acme/render-service', client: 'claude-code', model: 'Claude Opus 5', athlete: 'Sam Rivera',
@@ -27,7 +43,8 @@ const SAMPLES = [
 for (const [name, input, prs, streak] of SAMPLES) {
   const a = clean(input);
   const out = writeCard(name, renderCard(a, { badges: badgesFor(a), prs, streak }));
-  console.log(out.pngPath, '—', badgesFor(a).map((b) => b.name).join(', ') || '(no badges)');
+  const where = name === 'demo' ? publish(out.pngPath, 'example.png') : out.pngPath;
+  console.log(where, '—', badgesFor(a).map((b) => b.name).join(', ') || '(no badges)');
 }
 
 /* ---------- a synthetic season, so the README never publishes real telemetry ---------- */
@@ -84,7 +101,7 @@ function fakeSeason(n = 140) {
 
 const season = fakeSeason();
 const recap = writeCard('demo-recap', renderRecap(season, { athlete: 'Sam Rivera' }));
-console.log(recap.pngPath, `— synthetic recap, ${season.length} activities`);
+console.log(publish(recap.pngPath, 'recap.png'), `— synthetic recap, ${season.length} activities`);
 
 // Snaps from the same fake season, pinned to fixed periods and a fixed "now" so
 // the committed images only change when the renderer does.
@@ -98,5 +115,5 @@ for (let d = new Date(2026, 5, 1); d < new Date(2026, 7, 31); d.setDate(d.getDat
 const month = summarize(season, resolvePeriod('month', '2026-08'), { now });
 const w = writeCard('demo-weekly', renderWeekly(week, { athlete: 'Sam Rivera' }));
 const m = writeCard('demo-monthly', renderMonthly(month, { athlete: 'Sam Rivera' }));
-console.log(w.pngPath, `— synthetic week: ${week.sessions} sessions, ${week.activeDays} active days`);
-console.log(m.pngPath, `— synthetic month: ${month.sessions} sessions, ${month.activeDays} active days`);
+console.log(publish(w.pngPath, 'weekly.png'), `— synthetic week: ${week.sessions} sessions, ${week.activeDays} active days`);
+console.log(publish(m.pngPath, 'monthly.png'), `— synthetic month: ${month.sessions} sessions, ${month.activeDays} active days`);
