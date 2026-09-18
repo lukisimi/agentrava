@@ -2,7 +2,7 @@
 // One-command setup. Idempotent, backs up anything it edits, and --uninstall
 // reverses every change.
 //
-//   node scripts/install.mjs [--cursor] [--uninstall]
+//   node scripts/install.mjs [--cursor] [--codex] [--uninstall]
 //   node scripts/install.mjs --manual    remove the Stop hook, keep everything else
 //   node scripts/install.mjs --auto      put the Stop hook back
 import fs from 'node:fs';
@@ -22,6 +22,7 @@ const STAMP_CMD = `sh ${STAMP}`;
 const argv = process.argv.slice(2);
 const UNINSTALL = argv.includes('--uninstall');
 const WITH_CURSOR = argv.includes('--cursor');
+const WITH_CODEX = argv.includes('--codex');
 // --manual keeps the MCP server and CLI but stops logging on every turn.
 const MANUAL = argv.includes('--manual');
 const AUTO = argv.includes('--auto');
@@ -163,6 +164,40 @@ if (WITH_CURSOR || UNINSTALL) {
     for (const ev of ['stop']) ((ccfg.hooks ||= {})[ev] ||= []).push({ command: cmd });
     writeJson(ch, ccfg);
     ok(`Cursor probe installed${b ? ` (backup ${b})` : ''}`);
+  }
+}
+
+// 5. Codex CLI, opt-in. Codex reads MCP servers from config.toml, and has no
+// per-turn hook to spare — `notify` takes a single program and is usually
+// already claimed — so Codex logging is manual: the snapshot tool, or
+// `node scripts/log-now.mjs --codex`.
+if (WITH_CODEX || UNINSTALL) {
+  console.log('\nCodex CLI');
+  const conf = path.join(os.homedir(), '.codex', 'config.toml');
+  const exists = fs.existsSync(conf);
+  const body = exists ? fs.readFileSync(conf, 'utf8') : '';
+  const header = '[mcp_servers.agentrava]';
+  const had = body.includes(header);
+  if (UNINSTALL) {
+    if (!had) skip('no Codex entry to remove');
+    else {
+      const b = backup(conf);
+      // Drop from our header to the next top-level table, leaving the rest alone.
+      const lines = body.split('\n');
+      const start = lines.findIndex((l) => l.trim() === header);
+      let end = start + 1;
+      while (end < lines.length && !/^\[/.test(lines[end])) end++;
+      lines.splice(start, end - start);
+      fs.writeFileSync(conf, lines.join('\n'));
+      ok(`Codex MCP entry removed (backup ${b})`);
+    }
+  } else if (had) skip('Codex MCP entry already installed');
+  else if (!exists) warn(`no ${conf} — start Codex once, then re-run with --codex`);
+  else {
+    const b = backup(conf);
+    const block = `\n${header}\ncommand = "${process.execPath}"\nargs = ["${SERVER}"]\n`;
+    fs.appendFileSync(conf, body.endsWith('\n') ? block : '\n' + block);
+    ok(`Codex MCP entry added (backup ${b}) — restart Codex to pick it up`);
   }
 }
 

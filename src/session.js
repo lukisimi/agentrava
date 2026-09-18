@@ -96,11 +96,19 @@ function bashWrites(cmd) {
 // a separate project. $HOME/.claude itself is excluded below.
 const WORKTREE = /^(.*?)\/\.(?:claude|cursor)\//;
 
+// Codex, run from the ChatGPT app, gives every conversation its own scratch
+// directory: <workspace>/Codex/<date>/<conversation-slug>. Those are not
+// projects — there is one per session, each named after the conversation, which
+// would put chat titles on a card meant to be shared. Group them under the
+// Codex workspace instead. A Codex session started in a real repository still
+// reports that repository, because its cwd is the repository.
+const CODEX_SCRATCH = /^(.*\/Codex)\/\d{4}-\d{2}-\d{2}\/[^/]+/;
+
 // Agent scaffolding is not a project: memory files, scratch workspaces and the
 // like are where the tooling lives, not where the user works.
 function isScaffolding(cwd) {
   const home = os.homedir();
-  return [path.join(home, '.claude'), path.join(home, '.cursor'),
+  return [path.join(home, '.claude'), path.join(home, '.cursor'), path.join(home, '.codex'),
           path.join(home, 'Library', 'Application Support', 'Claude'),
           path.join(home, 'Library', 'Application Support', 'Cursor')]
     .some((dir) => cwd === dir || cwd.startsWith(dir + path.sep));
@@ -112,6 +120,8 @@ function repoRoot(cwd) {
   if (!cwd) return '';
   const wt = cwd.match(WORKTREE);
   if (wt && wt[1] && wt[1] !== os.homedir()) return wt[1];
+  const cs = cwd.match(CODEX_SCRATCH);
+  if (cs) return cs[1];
   if (isScaffolding(cwd)) return '';
   try {
     const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'],

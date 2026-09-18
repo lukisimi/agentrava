@@ -15,7 +15,7 @@ bragging card — route map, climb profile, headline stats, badges, personal rec
 
 **Nothing on a card is self-reported.** A hook parses the session transcript for
 tool calls, tokens, diff hunks, recovered errors and moving time. The agent never
-gets to describe its own workout. Works with Claude Code and Cursor.
+gets to describe its own workout. Works with Claude Code, Codex CLI and Cursor.
 
 ## Install
 
@@ -31,6 +31,7 @@ hook. Idempotent, backs up every file it edits, and reversible:
 npm run setup -- --manual      # keep the tools, stop logging every turn
 npm run setup -- --auto        # put automatic logging back
 npm run setup -- --cursor      # also install the Cursor probe
+npm run setup -- --codex       # also register the MCP server with Codex CLI
 npm run setup -- --uninstall   # remove everything (your data is left alone)
 ```
 
@@ -208,6 +209,8 @@ By hand, any time:
 ```bash
 npm run log                       # the session you are in
 node scripts/log-now.mjs --cursor # the Cursor conversation you are in
+node scripts/log-now.mjs --codex  # the Codex CLI session you are in
+node scripts/log-now.mjs --codex --list
 node scripts/log-now.mjs --list   # 15 most recent, newest first
 node scripts/log-now.mjs 9e22ccfa # one session by id prefix
 ```
@@ -241,6 +244,7 @@ node scripts/backfill.mjs --dry-run    # report only, writes nothing
 node scripts/backfill.mjs              # log everything not yet logged
 node scripts/backfill.mjs --force      # rebuild from empty (backs up first)
 node scripts/cursor-backfill.mjs       # same, for Cursor
+node scripts/codex-backfill.mjs        # same, for Codex CLI
 ```
 
 Sorted by session time, because personal records are judged against prior history
@@ -292,6 +296,62 @@ Cursor has a `stop` hook with the same stdio-JSON contract as Claude Code
 (`conversation_id`, `transcript_path`, `workspace_roots`, `status`), and
 `hooks/cursor-probe.mjs` captures one real payload. Live auto-logging is **not**
 wired up: a full scan takes ~60 s, too slow for every turn.
+
+## Codex CLI
+
+Codex writes one JSONL rollout per session under
+`~/.codex/sessions/YYYY/MM/DD/rollout-<timestamp>-<uuid>.jsonl`, with a timestamp
+on every line, so moving time, daily buckets and the climb profile come out the
+same way they do for Claude Code. 130 rollouts totalling 330 MB parse in about
+two seconds; the largest single file, 119 MB, takes 566 ms.
+
+**It records file changes better than the other two clients.** An `item_completed`
+event of type `FileChange` carries a `changes` map: the full body for an added
+file, a unified diff for an edited one. Churn is counted from those diffs rather
+than inferred from shell commands (Claude Code) or given up on (Cursor).
+
+Measured across the 24 sessions above the logging floor:
+
+| signal | coverage | |
+|---|---|---|
+| tool calls | 100% | ✅ `custom_tool_call`, `function_call`, `tool_search_call` |
+| moving time | 100% | ✅ |
+| tokens in/out/cached | 100% | ✅ `token_count.info.total_token_usage` |
+| files and line churn | 100% of sessions that changed a file | ✅ exact, from `FileChange` diffs |
+| errors | 54% | ✅ `item_completed` with `status: "failed"` |
+| model | 100% | ✅ from `turn_context` |
+| **est. API cost** | **0%** | ❌ deliberate — see below |
+| accepted / rejected edits | 0% | ❌ not recorded |
+
+Token totals are cumulative in the log, so the last `token_count` wins rather
+than being summed, and `input_tokens` includes the cached portion — the cached
+tokens are subtracted back out so a Codex card's token count means what a Claude
+Code card's does.
+
+**Cost stays blank.** Only Anthropic list prices are bundled (`src/pricing.js`);
+guessing OpenAI's would put a fabricated number next to measured ones, so Codex
+cards show `—` for est. API cost rather than `$0.00`.
+
+Two things in the log are not what they look like:
+
+- **The first user message is not the prompt.** Codex opens a session by feeding
+  itself the environment block, `AGENTS.md`, the plugin list and a replayed
+  approval history as user messages. Taken verbatim, sessions were titled
+  `<recommended_plugins>`. Those are skipped.
+- **Each Codex conversation gets its own directory** when Codex runs from the
+  ChatGPT app: `<workspace>/Codex/<date>/<conversation-slug>`. One project per
+  session, each named after the conversation — which would put chat titles on a
+  card meant to be shared. They group under the Codex workspace instead. A Codex
+  session started inside a real repository still reports that repository.
+
+Of 130 rollouts, 105 fall below the 8-tool-call floor: most are chat-only threads
+with no tools at all, which the same floor would reject in any client.
+
+There is **no auto-logging hook**. Codex's `notify` takes a single program and is
+usually already claimed by something else, so taking it over would break whatever
+was there. Log from Codex with the `snapshot` MCP tool (`npm run setup -- --codex`
+registers the server in `~/.codex/config.toml`) or with
+`node scripts/log-now.mjs --codex`.
 
 ## Cards
 

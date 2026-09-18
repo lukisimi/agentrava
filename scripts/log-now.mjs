@@ -8,6 +8,8 @@
 //   node scripts/log-now.mjs <path.jsonl> an explicit transcript
 //   node scripts/log-now.mjs --cursor     the Cursor conversation you are in
 //   node scripts/log-now.mjs --cursor <id-prefix>
+//   node scripts/log-now.mjs --codex      the Codex CLI session you are in
+//   node scripts/log-now.mjs --codex --list
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -52,6 +54,7 @@ async function cwdOf(file) {
 
 const argv = process.argv.slice(2);
 const CURSOR = argv.includes('--cursor');
+const CODEX = argv.includes('--codex');
 const arg = argv.find((a) => !a.startsWith('--'));
 
 if (CURSOR) {
@@ -71,6 +74,38 @@ if (CURSOR) {
   if (r.skipped) { console.log(`Nothing logged for ${conv.id.slice(0, 8)} — ${r.skipped}.`); process.exit(0); }
   const d = derive(r.activity);
   console.log(`${r.activity.title}${r.activity.repo ? ' · ' + r.activity.repo : ''}  (Cursor)`);
+  console.log(`  ${d.distance_km.toFixed(2)} km · ${Math.round(d.elevation_m)} m · ${fmtDuration(r.activity.duration_seconds)} · ` +
+    `effort ${d.effort} · ${r.activity.tool_calls} tool calls · ${r.activity.files_changed} files`);
+  if (r.badges.length) console.log(`  ${r.badges.map((b) => b.name).join(', ')}`);
+  console.log(`\n${r.card}`);
+  process.exit(0);
+}
+if (CODEX) {
+  const { findRollouts, parseCodexSession } = await import('../src/codex.js');
+  const { storeSession } = await import('../src/session.js');
+  const { derive, fmtDuration } = await import('../src/metrics.js');
+
+  const rollouts = findRollouts();
+  if (!rollouts.length) { console.error(`No Codex rollouts under ~/.codex/sessions`); process.exit(1); }
+
+  if (argv.includes('--list') || argv.includes('-l')) {
+    const now = Date.now();
+    for (const r of rollouts.slice(0, 15)) {
+      const mins = Math.round((now - r.mtime) / 60000);
+      const age = mins < 60 ? `${mins}m ago` : mins < 1440 ? `${Math.round(mins / 60)}h ago` : `${Math.round(mins / 1440)}d ago`;
+      console.log(`${r.id}  ${age.padStart(8)}  ${(r.size / 1048576).toFixed(1).padStart(6)} MB`);
+    }
+    process.exit(0);
+  }
+
+  const roll = arg ? rollouts.find((r) => r.id.startsWith(arg)) : rollouts[0];
+  if (!roll) { console.error(`No Codex session starting with "${arg}". Try --codex --list.`); process.exit(1); }
+
+  const stats = await parseCodexSession(roll.file);
+  const r = await storeSession({ sessionId: roll.id, stats, cwd: stats.cwd, client: 'codex' });
+  if (r.skipped) { console.log(`Nothing logged for ${roll.id.slice(0, 8)} — ${r.skipped}.`); process.exit(0); }
+  const d = derive(r.activity);
+  console.log(`${r.activity.title}${r.activity.repo ? ' · ' + r.activity.repo : ''}  (Codex)`);
   console.log(`  ${d.distance_km.toFixed(2)} km · ${Math.round(d.elevation_m)} m · ${fmtDuration(r.activity.duration_seconds)} · ` +
     `effort ${d.effort} · ${r.activity.tool_calls} tool calls · ${r.activity.files_changed} files`);
   if (r.badges.length) console.log(`  ${r.badges.map((b) => b.name).join(', ')}`);

@@ -1,8 +1,10 @@
-// Finding Claude Code session transcripts on disk. Shared by the CLI and the
-// MCP server so "the current session" means the same thing in both.
+// Finding session logs on disk — Claude Code transcripts and Codex CLI rollouts.
+// Shared by the CLI and the MCP server so "the current session" means the same
+// thing in both, whichever of the two clients the server was started by.
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { findRollouts } from './codex.js';
 
 export const PROJECTS = path.join(os.homedir(), '.claude', 'projects');
 
@@ -24,7 +26,9 @@ export function findTranscripts(dir = PROJECTS, out = [], depth = 0) {
   return out.sort((a, b) => b.mtime - a.mtime);
 }
 
-// Read the working directory a transcript recorded, from its first few lines.
+// Read the working directory a session log recorded, from its first few lines.
+// Claude Code puts `cwd` at the top level of every entry; Codex puts it inside
+// the payload of the session_meta line that opens the file.
 function cwdOf(file) {
   let fd;
   try {
@@ -33,22 +37,30 @@ function cwdOf(file) {
     const n = fs.readSync(fd, buf, 0, buf.length, 0);
     for (const line of buf.slice(0, n).toString('utf8').split('\n')) {
       if (!line.includes('"cwd"')) continue;
-      try { const d = JSON.parse(line); if (d.cwd) return d.cwd; } catch { /* partial line */ }
+      try {
+        const d = JSON.parse(line);
+        if (d.cwd) return d.cwd;
+        if (d.payload && d.payload.cwd) return d.payload.cwd;
+      } catch { /* partial line */ }
     }
   } catch { /* unreadable */ } finally { if (fd !== undefined) try { fs.closeSync(fd); } catch {} }
   return null;
 }
 
-// Which transcript is "the current session"?
+// Which session is "the current session"?
 //
-// Claude Code gives an MCP server no session id — CLAUDE_CODE_HOST_SESSION_ID is a
-// host-level id with no transcript of its own — so this is a heuristic, not a fact.
-// Most-recently-written alone picks the wrong session whenever another one is
-// active, so prefer a transcript whose recorded cwd matches where this server was
-// started, and fall back to plain recency. Callers should report which session
-// was chosen so a wrong guess is visible.
+// Neither client tells an MCP server which session called it — Claude Code's
+// CLAUDE_CODE_HOST_SESSION_ID is a host-level id with no transcript of its own —
+// so this is a heuristic, not a fact. Most-recently-written alone picks the wrong
+// session whenever another one is active, so prefer a log whose recorded cwd
+// matches where this server was started, and fall back to plain recency across
+// both clients. Callers should report which session was chosen so a wrong guess
+// is visible.
 export function resolveTranscript(idPrefix, cwd = process.cwd()) {
-  const list = findTranscripts();
+  const claude = findTranscripts().map((t) => ({ ...t, client: 'claude-code' }));
+  let codex = [];
+  try { codex = findRollouts().map((r) => ({ ...r, client: 'codex' })); } catch { /* no Codex here */ }
+  const list = [...claude, ...codex].sort((a, b) => b.mtime - a.mtime);
   if (!list.length) return null;
   if (idPrefix) {
     const hit = list.find((t) => t.id.startsWith(idPrefix));

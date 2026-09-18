@@ -15,8 +15,9 @@ import { badgesFor, prsFor, streak } from './achievements.js';
 import { renderCard } from './card.js';
 import { photoDataUri, resolvePhotoPath } from './photo.js';
 import { fmtUsd } from './pricing.js';
-import { logSession } from './session.js';
+import { logSession, storeSession } from './session.js';
 import { resolveTranscript } from './transcripts.js';
+import { parseCodexSession } from './codex.js';
 import { renderRecap } from './recap.js';
 import { resolvePeriod, dayKey } from './periods.js';
 import { summarize, fmtHM } from './summary.js';
@@ -75,9 +76,9 @@ const TOOLS = [
     title: 'Snapshot the current session',
     description:
       'Log the session that is running right now and return its card — mid-session, ' +
-      'without waiting for it to end. Numbers are measured from the transcript ' +
+      'without waiting for it to end. Numbers are measured from the session log ' +
       '(tool calls, tokens, diffs, recovered errors, moving time), not reported by you, ' +
-      'so prefer this over log_activity whenever the work happened in Claude Code. ' +
+      'so prefer this over log_activity whenever the work happened in Claude Code or Codex. ' +
       'Safe to call repeatedly: it updates the same activity instead of adding duplicates. ' +
       'With no argument it guesses the current session (matching working directory, else most ' +
       'recently written) and names which it chose — check that before repeating the numbers.',
@@ -260,9 +261,17 @@ function recap({ from, to, title, athlete } = {}) {
 
 async function snapshot({ session, photo, title } = {}) {
   const t = resolveTranscript(session);
-  if (!t) return text(session ? `No session matching "${session}".` : 'No Claude Code transcripts found.');
+  if (!t) return text(session ? `No session matching "${session}".` : 'No Claude Code or Codex sessions found.');
 
-  const r = await logSession({ sessionId: t.id, transcriptPath: t.file });
+  // The same server is reachable from both clients, and each writes its session
+  // to disk in its own format.
+  let r;
+  if (t.client === 'codex') {
+    const stats = await parseCodexSession(t.file);
+    r = await storeSession({ sessionId: t.id, stats, cwd: stats.cwd, client: 'codex' });
+  } else {
+    r = await logSession({ sessionId: t.id, transcriptPath: t.file });
+  }
   if (r.skipped) return text(`Nothing to log for ${t.id.slice(0, 8)} — ${r.skipped}.`);
 
   // Save the photo as an override before redrawing — drawing it once without
@@ -285,7 +294,7 @@ async function snapshot({ session, photo, title } = {}) {
   const d = derive(r.activity);
   const lines = [
     `🏅  ${shown.title}${shown.project_name && !shown.project_hidden ? ` · ${shown.project_name}` : ''}  (in progress)`,
-    `session ${t.id.slice(0, 8)} — picked by ${t.why}${t.why !== 'requested' ? '; pass `session` if that is the wrong one' : ''}`,
+    `session ${t.id.slice(0, 8)}${t.client === 'codex' ? ' (Codex)' : ''} — picked by ${t.why}${t.why !== 'requested' ? '; pass `session` if that is the wrong one' : ''}`,
     `${d.distance_km.toFixed(2)} km  ·  ${Math.round(d.elevation_m)} m climbed  ·  ${fmtDuration(r.activity.duration_seconds)}  ·  ` +
       `${fmtPace(d.pace_min_per_km)} /km  ·  effort ${d.effort}`,
     `${r.activity.tool_calls} tool calls  ·  ${fmtNum(r.activity.tokens)} tokens  ·  ` +
