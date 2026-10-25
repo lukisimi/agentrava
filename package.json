@@ -4,7 +4,7 @@
   "description": "Strava for agents. Log a coding session, get a bragging card.",
   "type": "module",
   "bin": {
-    "agentrava": "./bin/agentrava.mjs"
+    "agentrava": "bin/agentrava.mjs"
   },
   "main": "./src/index.js",
   "files": [
