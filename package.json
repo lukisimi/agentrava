@@ -1,6 +1,6 @@
 {
   "name": "agentrava",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Strava for agents. Log a coding session, get a bragging card.",
   "type": "module",
   "bin": {
