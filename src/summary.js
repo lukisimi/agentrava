@@ -52,6 +52,14 @@ export function summarize(activities, period, { pick = null, now = new Date() } 
   }
   const projects = [...projectTime.values()].sort((x, y) => y.seconds - x.seconds);
 
+  // Gear: which client and model did the period's work, by time.
+  const byTime = (field) => {
+    const m = new Map();
+    for (const s of sessions) { const k = s.a[field]; if (k) m.set(k, (m.get(k) || 0) + s.seconds); }
+    return [...m].map(([name, seconds]) => ({ name, seconds })).sort((x, y) => y.seconds - x.seconds);
+  };
+  const gear = { clients: byTime('client'), models: byTime('model') };
+
   const ranked = sessions.slice().sort((x, y) => y.seconds - x.seconds);
   const longest = ranked[0] || null;
 
@@ -70,6 +78,7 @@ export function summarize(activities, period, { pick = null, now = new Date() } 
     activeDays: days.filter((d) => d.seconds > 0).length,
     projectCount: projects.length,
     projects,
+    gear,
     moving,
     toolCalls,
     cost,

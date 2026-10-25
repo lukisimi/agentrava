@@ -7,6 +7,7 @@ import { fmtUsd } from './pricing.js';
 import { fmtHM } from './summary.js';
 import { config } from './store.js';
 import { avatarSvg } from './avatar.js';
+import { clientInfo } from './clients.js';
 
 const W = 1080, H = 1350, P = 64;
 const ACCENT = '#ff3b7f';
@@ -15,6 +16,25 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
 const DOW = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 
 /* ---------------- shared pieces ---------------- */
+
+// What did the work, Strava's "gear": the client, and the model when one client
+// and one model did nearly all of it. A real mix shows the top two clients by
+// share of time instead, since one name would claim work it did not do.
+function gearLine({ clients = [], models = [] } = {}, total) {
+  if (!clients.length || !total) return '';
+  const label = (c) => (clientInfo(c.name) || { label: c.name }).label;
+  const share = (x) => x.seconds / total;
+  if (share(clients[0]) >= 0.9) {
+    const client = label(clients[0]);
+    const model = models[0] && share(models[0]) >= 0.9
+      // "Claude Code · Opus 5.5" rather than "Claude Code · Claude Opus 5.5".
+      ? models[0].name.replace(new RegExp(`^${client.split(' ')[0]} `, 'i'), '')
+      : '';
+    return [client, model].filter(Boolean).join(' · ');
+  }
+  return clients.slice(0, 2).map((c) => `${label(c)} ${Math.round(share(c) * 100)}%`).join(' · ');
+}
+const withGear = (sub, s) => [sub, gearLine(s.gear, s.moving)].filter(Boolean).join('  ·  ');
 
 function frame(inner, { athlete, sub, kind, partial }) {
   const initial = esc((athlete || 'A').slice(0, 1).toUpperCase());
@@ -27,7 +47,7 @@ function frame(inner, { athlete, sub, kind, partial }) {
   <rect width="${W}" height="8" fill="${ACCENT}"/>
   ${avatarSvg({ cx: P + 40, cy: 103, r: 40, initial, accent: ACCENT, ink: C.ink, id: 'avatar' })}
   <text x="${P + 96}" y="95" fill="${C.ink}" font-size="29" font-weight="700">${esc(fit(athlete, 29, 450, true))}</text>
-  <text x="${P + 96}" y="127" fill="${C.muted}" font-size="21">${esc(sub)}</text>
+  <text x="${P + 96}" y="127" fill="${C.muted}" font-size="21">${esc(fit(sub, 21, 620))}</text>
   <text x="${W - P}" y="98" fill="${C.label}" font-size="19" font-weight="700" letter-spacing="2" text-anchor="end">${kind}</text>
   ${partial ? `<text x="${W - P}" y="127" fill="${ACCENT}" font-size="18" font-weight="700" letter-spacing="1.5" text-anchor="end">${partial}</text>` : ''}
   ${inner}
@@ -141,7 +161,7 @@ export function renderWeekly(s, { athlete, title, hideProjects = false } = {}) {
   <line x1="${P}" y1="960" x2="${W - P}" y2="960" stroke="#ffffff" stroke-opacity="0.08"/>
   ${feature(1008, s, { heading: 'SESSION SPOTLIGHT', title: s.feature ? `Longest session · ${fmtHM(s.feature.seconds)}` : '' })}`;
 
-  return frame(inner, { athlete, sub,
+  return frame(inner, { athlete, sub: withGear(sub, s),
     kind: rolling ? `LAST ${rolling} DAYS` : 'WEEKLY SNAP',
     partial: !rolling && s.partial ? 'THIS WEEK SO FAR' : '' });
 }
@@ -234,7 +254,7 @@ export function renderMonthly(s, { athlete, title, hideProjects = false } = {}) 
   ${projects}
   ${feature(pickY, s, { heading: f && f.selected ? "MONTH'S PICK" : 'LONGEST SESSION', title: pickTitle, compact: true })}`;
 
-  return frame(inner, { athlete, sub,
+  return frame(inner, { athlete, sub: withGear(sub, s),
     kind: rolling ? `LAST ${rolling} DAYS` : 'MONTHLY SNAP',
     partial: !rolling && s.partial ? 'THIS MONTH SO FAR' : '' });
 }
