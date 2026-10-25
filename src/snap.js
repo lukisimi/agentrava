@@ -2,7 +2,7 @@
 // card, so a snap and a card sit side by side in a feed without either being
 // cropped. The mockups were roughly twice as tall; everything here is budgeted
 // to fit that frame, including a six-row month.
-import { C, esc, charW, fit } from './card.js';
+import { C, esc, charW, fit, wordmark } from './card.js';
 import { fmtUsd } from './pricing.js';
 import { fmtHM } from './summary.js';
 import { config } from './store.js';
@@ -33,7 +33,7 @@ function frame(inner, { athlete, sub, kind, partial }) {
   ${inner}
   <line x1="${P}" y1="1252" x2="${W - P}" y2="1252" stroke="#ffffff" stroke-opacity="0.08"/>
   <text x="${P}" y="1302" fill="${C.label}" font-size="19">Recorded activity · Not a productivity score</text>
-  <text x="${W - P}" y="1302" fill="${C.ink}" font-size="30" font-weight="700" letter-spacing="4" text-anchor="end">AGENTRAVA</text>
+  ${wordmark(W - P, 1294)}
 </svg>`;
 }
 

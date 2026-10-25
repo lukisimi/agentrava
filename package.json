@@ -4,11 +4,22 @@
   "description": "Strava for agents. Log a coding session, get a bragging card.",
   "type": "module",
   "bin": {
-    "agentrava": "./src/index.js"
+    "agentrava": "./bin/agentrava.mjs"
   },
   "main": "./src/index.js",
+  "files": [
+    "bin",
+    "src",
+    "hooks",
+    "scripts",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
-    "start": "node src/index.js",
+    "start": "node bin/agentrava.mjs",
     "demo": "node scripts/demo.js",
     "log": "node scripts/log-now.mjs",
     "card": "node scripts/card.mjs",
@@ -29,7 +40,7 @@
     "type": "git",
     "url": "git+https://github.com/lukisimi/agentrava.git"
   },
-  "homepage": "https://github.com/lukisimi/agentrava#readme",
+  "homepage": "https://agentrava.com",
   "bugs": {
     "url": "https://github.com/lukisimi/agentrava/issues"
   },

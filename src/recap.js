@@ -1,5 +1,5 @@
 // Season recap: one card summarising every logged activity in a period.
-import { C, esc, charW, fit } from './card.js';
+import { C, esc, charW, fit, wordmark } from './card.js';
 import { derive, fmtDuration, fmtNum } from './metrics.js';
 import { config } from './store.js';
 import { stampedDays } from './achievements.js';
@@ -143,7 +143,7 @@ export function renderRecap(activities, { athlete, title = '' } = {}) {
   <rect width="${W}" height="${H}" fill="url(#bg)"/>
   <rect x="0" y="0" width="${W}" height="8" fill="${ACCENT}"/>
 
-  <text x="${P}" y="${96}" fill="${C.ink}" font-size="26" font-weight="700" letter-spacing="4">AGENTRAVA</text>
+  ${wordmark(P, 96, 'start', 26)}
   <text x="${W - P}" y="${96}" fill="${C.muted}" font-size="21" text-anchor="end">${esc(period)}</text>
 
   <text x="${P}" y="${196}" fill="${C.ink}" font-size="58" font-weight="700" letter-spacing="-1.2">${esc(title || `${acts.length} Activities`)}</text>

@@ -48,7 +48,7 @@ async function main() {
         `${Math.round(d.elevation_m)} m. ${r.fresh.slice(0, 3).join(', ')}` +
         // The title is generated from the clock and type; this is the one
         // message people read, so say here that it can be changed.
-        ` · rename: node scripts/rename.mjs session ${hook.session_id.slice(0, 8)} "…"`,
+        ` · rename: ${fs.existsSync(path.join(HERE, '..', '.git')) ? 'node scripts/rename.mjs' : 'npx agentrava rename'} session ${hook.session_id.slice(0, 8)} "…"`,
       suppressOutput: true,
     }));
   }

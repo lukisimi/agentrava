@@ -138,7 +138,7 @@ console.log(`  ${d.distance_km.toFixed(2)} km · ${Math.round(d.elevation_m)} m 
 if (prs.length) console.log(`  PR: ${prs.map((p) => p.name).join(', ')}`);
 console.log(`  ${badges.map((b) => b.name).join(', ') || 'no badges'}`);
 const risk = summaryLooksSensitive(target.summary);
-if (risk) console.log(`\n  ⚠  subtitle ${risk} — before sharing, run:\n     node scripts/card.mjs ${(target.session_id || target.id).slice(0, 8)} --no-summary`);
+
 // Token accounting lives here now; it no longer fits on the card.
 if (target.tokens_in || target.tokens_out || target.tokens_cache_read) {
   console.log(`  tokens: ${fmtNum(target.tokens_in)} in · ${fmtNum(target.tokens_out)} out · ` +
@@ -152,6 +152,8 @@ if (target.photo || target.route || target.share) {
 // session was about; say how to fix that rather than leave it to be found.
 // An activity id only matches whole; a session id matches by prefix.
 const short = target.session_id ? target.session_id.slice(0, 8) : target.id;
-if (target.title === target.generated_title) console.log(`\n  title "${target.title}" is generated — rename it: node scripts/card.mjs ${short} --title "…"`);
+const self = process.env.AGENTRAVA_VIA ? `${process.env.AGENTRAVA_VIA} card` : 'node scripts/card.mjs';
+if (risk) console.log(`\n  ⚠  subtitle ${risk} — before sharing, run:\n     ${self} ${short} --no-summary`);
+if (target.title === target.generated_title) console.log(`\n  title "${target.title}" is generated — rename it: ${self} ${short} --title "…"`);
 if (!target.share) console.log(`  posting it? --share friends drops cost and the diff; --share anonymous also drops photo, name and project`);
 console.log(`\n${out.pngPath || out.svgPath}`);

@@ -24,28 +24,41 @@ gets to describe its own workout. Works with Claude Code, Codex CLI and Cursor.
 ## Warm-up: install
 
 ```bash
-git clone https://github.com/lukisimi/agentrava ~/agentrava && cd ~/agentrava
-npm run setup
+npx agentrava setup
 ```
 
-Installs dependencies, registers the MCP server at user scope, and adds the Stop
-hook. Idempotent, backs up every file it edits, and reversible:
+Copies itself to `~/.agentrava/app`, registers the MCP server with Claude Code,
+adds the Stop hook, and offers to log your past sessions so the first card you
+see is one of your own. If Codex CLI or Cursor is installed, it asks before
+touching either. Idempotent, backs up every file it edits, and reversible:
 
 ```bash
-npm run setup -- --manual      # keep the tools, stop logging every turn
-npm run setup -- --auto        # put automatic logging back
-npm run setup -- --cursor      # also install the Cursor probe
-npm run setup -- --codex       # also register the MCP server with Codex CLI
-npm run setup -- --uninstall   # remove everything (your data is left alone)
+npx agentrava setup --manual      # keep the tools, stop logging every turn
+npx agentrava setup --auto        # put automatic logging back
+npx agentrava setup --codex       # register with Codex CLI without being asked
+npx agentrava setup --yes         # accept every offer, ask nothing
+npx agentrava setup --uninstall   # remove everything (your data is left alone)
+npx agentrava@latest setup        # update
 ```
 
-Restart Claude Code, then `node scripts/backfill.mjs` to log your history.
+Restart Claude Code, then ask it to "show my agentrava". Every script below is
+also a subcommand — `npx agentrava card --best`, `npx agentrava snap week` —
+and `npx agentrava help` lists them.
 
-Any MCP client works — it speaks stdio:
+**Why it copies itself:** the hook and the server are registered by absolute
+path, and `npx` runs packages from a cache npm can clear at any time. A copy in
+`~/.agentrava/app` keeps working after that. Moving between a clone and the copy
+re-points the existing hook instead of adding a second one.
+
+Any other MCP client works — it speaks stdio:
 
 ```json
-{ "mcpServers": { "agentrava": { "command": "node", "args": ["/path/to/agentrava/src/index.js"] } } }
+{ "mcpServers": { "agentrava": { "command": "npx", "args": ["-y", "agentrava"] } } }
 ```
+
+**From a clone**, for hacking on it: `git clone https://github.com/lukisimi/agentrava && cd agentrava && node scripts/install.mjs`.
+The setup then registers the clone itself, and the `node scripts/…` commands in
+the rest of this page work as written.
 
 ## Tools
 
@@ -400,7 +413,7 @@ with no tools at all, which the same floor would reject in any client.
 
 There is **no auto-logging hook**. Codex's `notify` takes a single program and is
 usually already claimed by something else, so taking it over would break whatever
-was there. Log from Codex with the `snapshot` MCP tool (`npm run setup -- --codex`
+was there. Log from Codex with the `snapshot` MCP tool (`npx agentrava setup --codex`
 registers the server in `~/.codex/config.toml`) or with
 `node scripts/log-now.mjs --codex`.
 

@@ -191,6 +191,14 @@ function shareView(a, photo) {
 }
 
 /* ---------- pieces ---------- */
+// The wordmark with the address under it: a posted card is the only thing most
+// people will ever see of this project, so it says where to find it.
+export const SITE = 'agentrava.com';
+export function wordmark(x, y, anchor = 'end', size = 30) {
+  return `<text x="${x}" y="${y}" fill="${C.ink}" font-size="${size}" font-weight="700" letter-spacing="4" text-anchor="${anchor}">AGENTRAVA</text>
+  <text x="${x}" y="${y + Math.round(size)}" fill="${C.label}" font-size="${Math.round(size * 0.6)}" font-weight="600" letter-spacing="1.5" text-anchor="${anchor}">${SITE}</text>`;
+}
+
 function bigStat(x, y, value, unit, label) {
   const vw = value.length * charW(66, true);
   return `
@@ -380,7 +388,7 @@ export function renderCard(activity, { badges = [], prs = [], streak = 0, photo:
 
   <!-- footer -->
   <line x1="${P}" y1="1252" x2="${W - P}" y2="1252" stroke="#ffffff" stroke-opacity="0.08"/>
-  <text x="${W - P}" y="1302" fill="${C.ink}" font-size="30" font-weight="700" letter-spacing="4" text-anchor="end">AGENTRAVA</text>
+  ${wordmark(W - P, 1294)}
   <text x="${P}" y="1302" fill="${C.label}" font-size="22">${esc(fit(level === 'full' ? footerLine(a) : '',
     // Clamp to the space left of the AGENTRAVA wordmark, or the two collide.
     22, W - 2 * P - 268))}</text>
