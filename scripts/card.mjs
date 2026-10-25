@@ -14,6 +14,10 @@
 //   node scripts/card.mjs <id> --route auto                    back to the default placement
 //   node scripts/card.mjs <id> --summary "text"                replace the subtitle
 //   node scripts/card.mjs <id> --no-summary                    drop it before sharing
+//   node scripts/card.mjs <id> --title "Fixed the login loop"  rename it (rename.mjs session <id> --reset undoes)
+//   node scripts/card.mjs <id> --share friends                 no cost, economy or diff footer
+//   node scripts/card.mjs <id> --share anonymous               also no photo, avatar, name, title, subtitle, project
+//   node scripts/card.mjs <id> --share full                    everything again
 import { all, load, save } from '../src/store.js';
 import path from 'node:path';
 import { derive, fmtDuration, fmtPace, fmtNum } from '../src/metrics.js';
@@ -23,8 +27,9 @@ import { renderCard } from '../src/card.js';
 import { writeCard } from '../src/render.js';
 import { photoDataUri, resolvePhotoPath } from '../src/photo.js';
 import { setOverride, withPresentation, overrideKey } from '../src/store.js';
-import { ROUTE_POSITIONS } from '../src/card.js';
+import { ROUTE_POSITIONS, SHARE_LEVELS } from '../src/card.js';
 import { resolveTranscript } from '../src/transcripts.js';
+import { renameSession } from '../src/names.js';
 import { upsertBySession, presentAll } from '../src/store.js';
 
 function persist(a) {
@@ -50,7 +55,11 @@ const routeIdx = args.indexOf('--route');
 const routeArg = routeIdx >= 0 ? args[routeIdx + 1] : null;
 const scaleIdx = args.indexOf('--route-scale');
 const scaleArg = scaleIdx >= 0 ? Number(args[scaleIdx + 1]) : null;
-const flagValues = new Set([photoIdx, routeIdx, scaleIdx].filter((i) => i >= 0).map((i) => i + 1));
+const titleIdx = args.indexOf('--title');
+const titleArg = titleIdx >= 0 ? args[titleIdx + 1] : null;
+const shareIdx = args.indexOf('--share');
+const shareArg = shareIdx >= 0 ? args[shareIdx + 1] : null;
+const flagValues = new Set([photoIdx, routeIdx, scaleIdx, titleIdx, shareIdx].filter((i) => i >= 0).map((i) => i + 1));
 const sumIdx = args.indexOf('--summary');
 const newSummary = sumIdx >= 0 ? args[sumIdx + 1] : null;
 const clearSummary = args.includes('--no-summary');
@@ -106,6 +115,14 @@ if (routeArg || scaleArg) {
     : { ...cur, ...(routeArg ? { position: routeArg } : {}), ...(scaleArg ? { scale: scaleArg } : {}) };
   setOverride(overrideKey(target), { route: next });
 }
+if (titleArg !== null) {
+  try { renameSession(target.id, titleArg); }
+  catch (err) { console.error(`${err.message} (undo a rename with: node scripts/rename.mjs session <id> --reset)`); process.exit(1); }
+}
+if (shareArg !== null) {
+  if (!SHARE_LEVELS.includes(shareArg)) { console.error(`--share must be one of: ${SHARE_LEVELS.join(', ')}`); process.exit(1); }
+  setOverride(overrideKey(target), { share: shareArg === 'full' ? null : shareArg });
+}
 target = withPresentation(target);
 
 const badges = badgesFor(target);
@@ -127,7 +144,14 @@ if (target.tokens_in || target.tokens_out || target.tokens_cache_read) {
   console.log(`  tokens: ${fmtNum(target.tokens_in)} in · ${fmtNum(target.tokens_out)} out · ` +
     `${fmtNum(target.tokens_cache_write)} cache write · ${fmtNum(target.tokens_cache_read)} cache read`);
 }
-if (target.photo || target.route) {
-  console.log(`  presentation: ${[target.photo ? 'photo' : '', target.route ? `route ${target.route.position || 'auto'} ×${target.route.scale ?? 'default'}` : ''].filter(Boolean).join(', ')}`);
+if (target.photo || target.route || target.share) {
+  console.log(`  presentation: ${[target.photo ? 'photo' : '', target.route ? `route ${target.route.position || 'auto'} ×${target.route.scale ?? 'default'}` : '',
+    target.share ? `share ${target.share}` : ''].filter(Boolean).join(', ')}`);
 }
+// The title is generated from the clock and type, so it often misses what the
+// session was about; say how to fix that rather than leave it to be found.
+// An activity id only matches whole; a session id matches by prefix.
+const short = target.session_id ? target.session_id.slice(0, 8) : target.id;
+if (target.title === target.generated_title) console.log(`\n  title "${target.title}" is generated — rename it: node scripts/card.mjs ${short} --title "…"`);
+if (!target.share) console.log(`  posting it? --share friends drops cost and the diff; --share anonymous also drops photo, name and project`);
 console.log(`\n${out.pngPath || out.svgPath}`);

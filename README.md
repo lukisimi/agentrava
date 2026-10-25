@@ -51,7 +51,8 @@ Any MCP client works — it speaks stdio:
 
 - **`agentrava`** — start here: every tool with an example, plus your totals and streak.
 - **`snapshot`** — card for the session in progress, measured from the live transcript.
-  Takes `photo` (`"chat"` uses an image you just pasted) and `title` to rename it inline.
+  Takes `photo` (`"chat"` uses an image you just pasted), `title` to rename it inline,
+  and `share` (`full` · `friends` · `anonymous`) to strip it [before you post it](#before-you-share-one).
 - **`log_activity`** — log a session by hand; unreported fields count as zero.
 - **`recap`** — one card for a whole period: totals, activity heatmap, hour-of-day
   histogram, trophy case, longest streak, biggest session. Optional `from` / `to`.
@@ -526,6 +527,34 @@ measured data, so re-logging a session or a forced backfill keeps them. (Before
 this, every re-log redrew the card from scratch and silently dropped the photo.)
 
 ### Before you share one
+
+**The title is a guess.** "Evening Debug" comes from the clock and the session
+type, not from what you did. Rename it first:
+
+```bash
+node scripts/card.mjs <session> --title "Fixed the login loop"
+```
+
+Or from chat: `snapshot` with `title`. `rename.mjs session <id> --reset` brings
+the generated one back.
+
+**Then pick how much to show.** One setting per card, kept across re-logs like
+the photo:
+
+| `--share` | what goes |
+|---|---|
+| `full` (default) | nothing — the card as measured |
+| `friends` | est. API cost, economy, the diff footer |
+| `anonymous` | all of that, plus the photo, avatar, name, your title, the subtitle and the project |
+
+```bash
+node scripts/card.mjs <session> --share friends
+node scripts/card.mjs <session> --share anonymous
+node scripts/card.mjs <session> --share full      # everything back
+```
+
+Or `snapshot` with `share`. The route, the climb and the badges stay on every
+level: without them it is a stats table, not an activity.
 
 The subtitle is your first prompt, and prompts name customers, vendors and
 internal projects.

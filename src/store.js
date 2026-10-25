@@ -109,8 +109,9 @@ export function upsertBySession(sessionId, activity) {
 // activities.json is rebuilt by every forced backfill and replaced by every
 // re-log; this file is touched by neither, so a photo set once stays set.
 const OVERRIDES = path.join(HOME, 'overrides.json');
-// title is a user rename; clearing it restores the generated title.
-export const PRESENTATION_KEYS = ['photo', 'route', 'title'];
+// title is a user rename; clearing it restores the generated title. share is
+// how much the card shows: friends or anonymous (absent means full).
+export const PRESENTATION_KEYS = ['photo', 'route', 'title', 'share'];
 
 export const overrideKey = (a) => a.session_id || a.id;
 

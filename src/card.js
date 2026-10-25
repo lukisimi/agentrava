@@ -174,6 +174,22 @@ function elevationPath(a, box) {
   return { line, area: `${line} L${(box.x + box.w).toFixed(1)} ${box.y + box.h} L${box.x} ${box.y + box.h} Z` };
 }
 
+// How much of a card to show before sharing it. "full" is the card as measured;
+// "friends" drops what reads as money or bookkeeping — cost, economy, the diff
+// footer; "anonymous" also drops everything that says whose session it was —
+// photo, avatar, name, renamed title, subtitle, project. The measured numbers
+// stay on every level: they are the point of the card.
+export const SHARE_LEVELS = ['full', 'friends', 'anonymous'];
+
+function shareView(a, photo) {
+  const level = SHARE_LEVELS.includes(a.share) ? a.share : 'full';
+  if (level !== 'anonymous') return { a, photo, level };
+  return {
+    a: { ...a, athlete: 'Athlete', title: a.generated_title || a.title, summary: '', project_hidden: true },
+    photo: null, level,
+  };
+}
+
 /* ---------- pieces ---------- */
 function bigStat(x, y, value, unit, label) {
   const vw = value.length * charW(66, true);
@@ -211,7 +227,8 @@ function chip(x, y, text, accent, isPR, ghost) {
 }
 
 /* ---------- the card ---------- */
-export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null } = {}) {
+export function renderCard(activity, { badges = [], prs = [], streak = 0, photo: photoIn = null } = {}) {
+  const { a, photo, level } = shareView(activity, photoIn);
   const d = derive(a);
   const meta = ACTIVITY_TYPES[a.type] || ACTIVITY_TYPES.feature;
   const accent = meta.color;
@@ -297,7 +314,7 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
   <rect x="0" y="0" width="${W}" height="8" fill="${accent}"/>
 
   <!-- header -->
-  ${avatarSvg({ cx: P + 40, cy: 103, r: 40, initial: esc(a.athlete.slice(0, 1).toUpperCase()), accent, ink: C.ink, id: 'avatar' })}
+  ${avatarSvg({ cx: P + 40, cy: 103, r: 40, initial: esc(a.athlete.slice(0, 1).toUpperCase()), accent, ink: C.ink, id: 'avatar', picture: level !== 'anonymous' })}
   <text x="${P + 96}" y="95" fill="${C.ink}" font-size="29" font-weight="700">${esc(fit(a.athlete, 29, 500, true))}</text>
   <text x="${P + 96}" y="127" fill="${C.muted}" font-size="21">${esc(fit(subtitle, 21, 700))}</text>
   ${cornerMark ? `<image href="${client.logo}" x="${W - P - MARK}" y="${103 - MARK / 2}" width="${MARK}" height="${MARK}" preserveAspectRatio="xMidYMid meet"/>` : ''}
@@ -341,12 +358,22 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
 
   <line x1="${P}" y1="926" x2="${W - P}" y2="926" stroke="#ffffff" stroke-opacity="0.08"/>
 
-  ${smallStat(P, 990, fmtPace(d.pace_min_per_km) + '/km', 'Pace')}
-  ${smallStat(P + 159, 990, String(a.tool_calls), 'Tool calls')}
-  ${smallStat(P + 318, 990, fmtNum(a.tokens), 'Tokens')}
-  ${smallStat(P + 477, 990, a.cost_usd ? fmtUsd(a.cost_usd) : '—', 'Est. API cost')}
-  ${smallStat(P + 636, 990, d.tokens_per_km ? fmtNum(d.tokens_per_km) + '/km' : '—', 'Economy')}
-  ${smallStat(P + 795, 990, String(d.effort), 'Effort', d.effort >= 80 ? '#e0245e' : C.ink)}
+  ${(() => {
+    // Shared cards drop cost and economy and spread the rest, rather than
+    // leaving gaps that read as "not recorded".
+    const stats = [
+      [fmtPace(d.pace_min_per_km) + '/km', 'Pace'],
+      [String(a.tool_calls), 'Tool calls'],
+      [fmtNum(a.tokens), 'Tokens'],
+      ...(level === 'full' ? [
+        [a.cost_usd ? fmtUsd(a.cost_usd) : '—', 'Est. API cost'],
+        [d.tokens_per_km ? fmtNum(d.tokens_per_km) + '/km' : '—', 'Economy'],
+      ] : []),
+      [String(d.effort), 'Effort', d.effort >= 80 ? '#e0245e' : C.ink],
+    ];
+    const step = level === 'full' ? 159 : (W - 2 * P) / stats.length;
+    return stats.map(([v, l, c], i) => smallStat(P + i * step, 990, v, l, c)).join('');
+  })()}
 
   ${hasChips ? `<text x="${P}" y="1082" fill="${C.label}" font-size="17" font-weight="700" letter-spacing="2">ACHIEVEMENTS</text>` : ''}
   ${chipsSvg}
@@ -354,7 +381,7 @@ export function renderCard(a, { badges = [], prs = [], streak = 0, photo = null 
   <!-- footer -->
   <line x1="${P}" y1="1252" x2="${W - P}" y2="1252" stroke="#ffffff" stroke-opacity="0.08"/>
   <text x="${W - P}" y="1302" fill="${C.ink}" font-size="30" font-weight="700" letter-spacing="4" text-anchor="end">AGENTRAVA</text>
-  <text x="${P}" y="1302" fill="${C.label}" font-size="22">${esc(fit(footerLine(a),
+  <text x="${P}" y="1302" fill="${C.label}" font-size="22">${esc(fit(level === 'full' ? footerLine(a) : '',
     // Clamp to the space left of the AGENTRAVA wordmark, or the two collide.
     22, W - 2 * P - 268))}</text>
 </svg>`;

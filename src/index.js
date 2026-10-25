@@ -12,7 +12,7 @@ import { setAvatar } from './avatar.js';
 import { redrawCards } from './redraw.js';
 import { clean, derive, fmtDuration, fmtPace, fmtNum, ACTIVITY_TYPES } from './metrics.js';
 import { badgesFor, prsFor, streak } from './achievements.js';
-import { renderCard } from './card.js';
+import { renderCard, SHARE_LEVELS } from './card.js';
 import { photoDataUri, resolvePhotoPath } from './photo.js';
 import { fmtUsd } from './pricing.js';
 import { logSession, storeSession } from './session.js';
@@ -85,6 +85,8 @@ const TOOLS = [
     inputSchema: { type: 'object', properties: {
       session: { type: 'string', description: 'Session id prefix. Omit for the session in progress.' },
       photo: { type: 'string', description: 'Card background: a local image path, or "chat" to use the image the user most recently pasted into this conversation.' },
+      title: { type: 'string', description: 'Rename the session, up to 60 characters. Empty string restores the generated title.' },
+      share: { type: 'string', enum: SHARE_LEVELS, description: 'How much the card shows. full: everything. friends: no cost, economy or diff footer. anonymous: also no photo, avatar, name, renamed title, subtitle or project. Kept until changed.' },
     }, additionalProperties: false },
   },
   {
@@ -259,7 +261,7 @@ function recap({ from, to, title, athlete } = {}) {
   return { content };
 }
 
-async function snapshot({ session, photo, title } = {}) {
+async function snapshot({ session, photo, title, share } = {}) {
   const t = resolveTranscript(session);
   if (!t) return text(session ? `No session matching "${session}".` : 'No Claude Code or Codex sessions found.');
 
@@ -286,8 +288,13 @@ async function snapshot({ session, photo, title } = {}) {
     } catch (err) { return text(`Photo failed: ${err.message}`); }
   }
   if (title !== undefined) {
-    try { renameSession(r.stored.id, title); card = redrawCards((a) => a.id === r.stored.id)[0] || card; }
+    try { renameSession(r.stored.id, title === '' ? null : title); card = redrawCards((a) => a.id === r.stored.id)[0] || card; }
     catch (err) { return text(err.message); }
+  }
+  if (share !== undefined) {
+    if (!SHARE_LEVELS.includes(share)) return text(`share must be one of: ${SHARE_LEVELS.join(', ')}`);
+    setOverride(t.id, { share: share === 'full' ? null : share });
+    card = redrawCards((a) => a.id === r.stored.id)[0] || card;
   }
   const shown = presentAll([{ ...r.activity, id: r.stored.id }])[0];
 
@@ -304,7 +311,10 @@ async function snapshot({ session, photo, title } = {}) {
     `Card: ${card}`,
     nextSteps([
       shown.photo ? 'swap the background image (photo: "chat" uses one they paste here)' : 'put an image behind the route (photo: "chat" uses one they paste here)',
-      'rename this session (title, or rename_session with reset to undo)',
+      `rename this session — "${shown.title}" is ${shown.title === shown.generated_title ? 'generated from the clock and type' : 'their own title'} (title)`,
+      shown.share === 'anonymous' ? 'show the full card again (share: "full")'
+        : shown.share === 'friends' ? 'strip it further before posting publicly (share: "anonymous")'
+        : 'a version to post: share "friends" drops cost and the diff, "anonymous" also drops photo, name and project',
       shown.project_name && !shown.project_hidden ? `rename or hide the project "${shown.project_name}" (rename_project)` : '',
     ]),
   ].filter(Boolean);

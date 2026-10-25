@@ -39,8 +39,8 @@ export function setAvatar(spec, transcriptPath) {
 }
 
 // The circle, with the picture in it when there is one. id must be unique per SVG.
-export function avatarSvg({ cx, cy, r, initial, accent, ink, id = 'avatar' }) {
-  const uri = avatarUri();
+export function avatarSvg({ cx, cy, r, initial, accent, ink, id = 'avatar', picture = true }) {
+  const uri = picture ? avatarUri() : null;
   if (!uri) {
     return `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${accent}" fill-opacity="0.18"/>
   <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${accent}" stroke-opacity="0.5" stroke-width="2"/>

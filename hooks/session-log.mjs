@@ -45,7 +45,10 @@ async function main() {
   if (r.fresh.length && r.isNew) {
     process.stdout.write(JSON.stringify({
       systemMessage: `\u{1F3C5} Agentrava: ${r.activity.title} — ${d.distance_km.toFixed(2)} km, ` +
-        `${Math.round(d.elevation_m)} m. ${r.fresh.slice(0, 3).join(', ')}`,
+        `${Math.round(d.elevation_m)} m. ${r.fresh.slice(0, 3).join(', ')}` +
+        // The title is generated from the clock and type; this is the one
+        // message people read, so say here that it can be changed.
+        ` · rename: node scripts/rename.mjs session ${hook.session_id.slice(0, 8)} "…"`,
       suppressOutput: true,
     }));
   }
