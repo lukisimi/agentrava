@@ -1,7 +1,11 @@
 # Agentrava
 
+Your agent worked hard today. It deserves kudos.
+
 Strava, for coding agents. An MCP server that turns a finished session into a
 bragging card — route map, climb profile, headline stats, badges, personal records.
+
+Part joke, part serious: **the numbers are real, the scales are made up.**
 
 <p align="center">
   <img src="docs/example.png" width="46%" alt="A single session card">
@@ -11,13 +15,13 @@ bragging card — route map, climb profile, headline stats, badges, personal rec
   <img src="docs/weekly.png" width="46%" alt="A Weekly Snap card">
   <img src="docs/monthly.png" width="46%" alt="A Monthly Snap card">
 </p>
-<p align="center"><em>A session · a season · a week · a month. All four are generated from a synthetic season — no real usage data ships in this repo.</em></p>
+<p align="center"><em>A session · a season · a week · a month. All four belong to a synthetic athlete — no real usage data ships in this repo.</em></p>
 
 **Nothing on a card is self-reported.** A hook parses the session transcript for
 tool calls, tokens, diff hunks, recovered errors and moving time. The agent never
 gets to describe its own workout. Works with Claude Code, Codex CLI and Cursor.
 
-## Install
+## Warm-up: install
 
 ```bash
 git clone https://github.com/lukisimi/agentrava ~/agentrava && cd ~/agentrava
@@ -75,7 +79,7 @@ Every weight is **fitted to real sessions**, not guessed. Churn alone left the
 median session at 0.00 km — most sessions read and search far more than they
 write — which is why tool calls carry distance too.
 
-## What the numbers actually mean
+## Training science: what the numbers actually mean
 
 The inputs are measured. The **scales are invented** — 100 lines = 1 km, an error
 = 120 m — chosen so a median session lands near a plausible 4.4 km. That makes
@@ -224,7 +228,7 @@ Measured frequency: `Hill Repeats` 47%, `Marathon` 44%, `Yak Shave` 36%,
 Personal records only fire once there is something to beat, so the first activity
 never claims one.
 
-## Logging
+## Logging every workout
 
 Three modes, in descending cost:
 
@@ -272,7 +276,7 @@ conservative — it misses writes rather than inventing them, and line counts fo
 those files are not recovered, so churn under-reports on shell-heavy sessions;
 **session type is a guess** from files, churn and error count.
 
-## Backfill
+## Backfill: importing past seasons
 
 ```bash
 node scripts/backfill.mjs --dry-run    # report only, writes nothing
