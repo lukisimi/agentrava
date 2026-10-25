@@ -443,7 +443,7 @@ node scripts/rename.mjs project API --hide                # keep it off every ca
 Or from chat: `rename_session`, `rename_project`, `list_projects`. Every card
 result ends with the options that apply to it, phrased for the assistant to put
 to you —
-adding a photo, renaming, or hiding project names before you share. Affected cards
+adding a photo, renaming, hiding project names, or picking a share level before you share. Affected cards
 are redrawn immediately — changing a name in a table does nothing to a PNG
 already on disk.
 
@@ -556,6 +556,9 @@ node scripts/card.mjs <session> --share full      # everything back
 Or `snapshot` with `share`. The route, the climb and the badges stay on every
 level: without them it is a stats table, not an activity.
 
+Share levels are for session cards. Weekly and Monthly Snaps have their own
+switches — `--hide-projects` and `--title` — and no photo to drop.
+
 The subtitle is your first prompt, and prompts name customers, vendors and
 internal projects.
 
@@ -585,7 +588,8 @@ sessions were priced, so a gap is visible instead of silent.
 
 **This is not a bill.** A subscription does not charge per token. The figure is
 what the session *would* have cost on the API — useful for comparing sessions,
-useless as an invoice.
+useless as an invoice. Cards set to `friends` or `anonymous` leave it off, so the
+estimate does not end up in a post by accident.
 
 The split is the interesting part. Across 136 priced sessions: 0.7M input, 48.5M
 output, 373M cache writes and 17.2 **billion** cache reads. Cache reads are 98% of
