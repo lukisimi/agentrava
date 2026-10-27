@@ -9,13 +9,14 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const COMMANDS = {
   setup:            ['scripts/install.mjs',        'install, update, --manual, --auto, --uninstall'],
-  log:              ['scripts/log-now.mjs',        'log the session you are in (--codex, --cursor, --list)'],
+  log:              ['scripts/log-now.mjs',        'log the session you are in (--codex, --cursor, --hermes, --list)'],
   card:             ['scripts/card.mjs',           'render one card (--best, --title, --share, --photo)'],
   snap:             ['scripts/snap.mjs',           'weekly or monthly snap: snap week | snap month last30'],
   recap:            ['scripts/recap.js',           'season recap card, optional from and to dates'],
   backfill:         ['scripts/backfill.mjs',       'log every past Claude Code session'],
   'codex-backfill': ['scripts/codex-backfill.mjs', 'log every past Codex CLI session'],
   'cursor-backfill':['scripts/cursor-backfill.mjs','log every past Cursor conversation'],
+  'hermes-backfill':['scripts/hermes-backfill.mjs','log every past Hermes Agent conversation'],
   rename:           ['scripts/rename.mjs',         'rename sessions and projects, or hide a project'],
   whoami:           ['scripts/whoami.mjs',         'the name and avatar on your cards'],
   privacy:          ['scripts/privacy.mjs',        'find and strip subtitles that name people or companies'],

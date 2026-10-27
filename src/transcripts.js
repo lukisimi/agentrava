@@ -1,10 +1,12 @@
-// Finding session logs on disk — Claude Code transcripts and Codex CLI rollouts.
+// Finding session logs on disk — Claude Code transcripts, Codex CLI rollouts and
+// Hermes Agent's session database.
 // Shared by the CLI and the MCP server so "the current session" means the same
 // thing in both, whichever of the two clients the server was started by.
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { findRollouts } from './codex.js';
+import { listHermesSessions } from './hermes.js';
 
 export const PROJECTS = path.join(os.homedir(), '.claude', 'projects');
 
@@ -56,14 +58,27 @@ function cwdOf(file) {
 // matches where this server was started, and fall back to plain recency across
 // both clients. Callers should report which session was chosen so a wrong guess
 // is visible.
+//
+// Hermes is the exception: its setup entry starts this server with
+// AGENTRAVA_CLIENT=hermes, and its sessions live in a database, not a log file,
+// so there the newest Hermes conversation is the current one. `file` is null.
 export function resolveTranscript(idPrefix, cwd = process.cwd()) {
+  const hermes = () => { try { return listHermesSessions().map((h) => ({ ...h, file: null, client: 'hermes' })); } catch { return []; } };
+  if (process.env.AGENTRAVA_CLIENT === 'hermes') {
+    const list = hermes();
+    if (idPrefix) {
+      const hit = list.find((t) => t.id.startsWith(idPrefix));
+      return hit ? { ...hit, why: 'requested' } : null;
+    }
+    return list.length ? { ...list[0], why: 'most recent Hermes conversation' } : null;
+  }
   const claude = findTranscripts().map((t) => ({ ...t, client: 'claude-code' }));
   let codex = [];
   try { codex = findRollouts().map((r) => ({ ...r, client: 'codex' })); } catch { /* no Codex here */ }
   const list = [...claude, ...codex].sort((a, b) => b.mtime - a.mtime);
   if (!list.length) return null;
   if (idPrefix) {
-    const hit = list.find((t) => t.id.startsWith(idPrefix));
+    const hit = list.find((t) => t.id.startsWith(idPrefix)) || hermes().find((t) => t.id.startsWith(idPrefix));
     return hit ? { ...hit, why: 'requested' } : null;
   }
   for (const t of list.slice(0, 12)) {

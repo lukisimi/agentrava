@@ -10,6 +10,8 @@
 //   node scripts/log-now.mjs --cursor <id-prefix>
 //   node scripts/log-now.mjs --codex      the Codex CLI session you are in
 //   node scripts/log-now.mjs --codex --list
+//   node scripts/log-now.mjs --hermes     the latest Hermes Agent conversation
+//   node scripts/log-now.mjs --hermes --list
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -55,7 +57,42 @@ async function cwdOf(file) {
 const argv = process.argv.slice(2);
 const CURSOR = argv.includes('--cursor');
 const CODEX = argv.includes('--codex');
+const HERMES = argv.includes('--hermes');
 const arg = argv.find((a) => !a.startsWith('--'));
+
+if (HERMES) {
+  const { listHermesSessions, parseHermesSession } = await import('../src/hermes.js');
+  const { inferRepo } = await import('../src/cursor.js');
+  const { storeSession } = await import('../src/session.js');
+  const { derive, fmtDuration } = await import('../src/metrics.js');
+
+  const sessions = listHermesSessions();
+  if (!sessions.length) { console.error('No Hermes sessions under ~/.hermes'); process.exit(1); }
+
+  if (argv.includes('--list') || argv.includes('-l')) {
+    const now = Date.now();
+    for (const h of sessions.slice(0, 15)) {
+      const mins = Math.round((now - h.mtime) / 60000);
+      const age = mins < 60 ? `${mins}m ago` : mins < 1440 ? `${Math.round(mins / 60)}h ago` : `${Math.round(mins / 1440)}d ago`;
+      console.log(`${h.id}  ${age.padStart(8)}  ${(h.source || '').padEnd(9)} ${h.title || ''}`);
+    }
+    process.exit(0);
+  }
+
+  const h = arg ? sessions.find((s) => s.id.startsWith(arg)) : sessions[0];
+  if (!h) { console.error(`No Hermes session starting with "${arg}". Try --hermes --list.`); process.exit(1); }
+
+  const stats = parseHermesSession(h.id, h.db);
+  const r = await storeSession({ sessionId: stats.id, stats, cwd: stats.cwd || inferRepo(stats.files) || '', client: 'hermes' });
+  if (r.skipped) { console.log(`Nothing logged for ${stats.id} — ${r.skipped}.`); process.exit(0); }
+  const d = derive(r.activity);
+  console.log(`${r.activity.title}${r.activity.repo ? ' · ' + r.activity.repo : ''}  (Hermes${stats.source ? ', ' + stats.source : ''})`);
+  console.log(`  ${d.distance_km.toFixed(2)} km · ${Math.round(d.elevation_m)} m · ${fmtDuration(r.activity.duration_seconds)} · ` +
+    `effort ${d.effort} · ${r.activity.tool_calls} tool calls · ${r.activity.files_changed} files`);
+  if (r.badges.length) console.log(`  ${r.badges.map((b) => b.name).join(', ')}`);
+  console.log(`\n${r.card}`);
+  process.exit(0);
+}
 
 if (CURSOR) {
   const { listConversations, parseCursorSession, inferRepo } = await import('../src/cursor.js');

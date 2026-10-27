@@ -16,6 +16,7 @@ export const CLIENTS = {
   openai:        { label: 'OpenAI',      tint: '#10a37f' },
   codex:         { label: 'Codex',       tint: '#10a37f' },
   grok:          { label: 'Grok',        tint: '#ffffff' },
+  hermes:        { label: 'Hermes',      tint: '#c9b8ff' },
   copilot:       { label: 'Copilot',     tint: '#8957e5' },
   windsurf:      { label: 'Windsurf',    tint: '#58c4a5' },
   zed:           { label: 'Zed',         tint: '#4a9eff' },

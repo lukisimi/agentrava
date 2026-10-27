@@ -19,7 +19,8 @@ Part joke, part serious: **the numbers are real, the scales are made up.**
 
 **Nothing on a card is self-reported.** A hook parses the session transcript for
 tool calls, tokens, diff hunks, recovered errors and moving time. The agent never
-gets to describe its own workout. Works with Claude Code, Codex CLI and Cursor.
+gets to describe its own workout. Works with Claude Code, Codex CLI, Cursor and
+Hermes Agent.
 
 ## Warm-up: install
 
@@ -29,13 +30,14 @@ npx agentrava setup
 
 Copies itself to `~/.agentrava/app`, registers the MCP server with Claude Code,
 adds the Stop hook, and offers to log your past sessions so the first card you
-see is one of your own. If Codex CLI or Cursor is installed, it asks before
-touching either. Idempotent, backs up every file it edits, and reversible:
+see is one of your own. If Codex CLI, Cursor or Hermes Agent is installed, it asks
+before touching any of them. Idempotent, backs up every file it edits, and reversible:
 
 ```bash
 npx agentrava setup --manual      # keep the tools, stop logging every turn
 npx agentrava setup --auto        # put automatic logging back
 npx agentrava setup --codex       # register with Codex CLI without being asked
+npx agentrava setup --hermes      # register with Hermes Agent without being asked
 npx agentrava setup --yes         # accept every offer, ask nothing
 npx agentrava setup --uninstall   # remove everything (your data is left alone)
 npx agentrava@latest setup        # update
@@ -264,6 +266,8 @@ npm run log                       # the session you are in
 node scripts/log-now.mjs --cursor # the Cursor conversation you are in
 node scripts/log-now.mjs --codex  # the Codex CLI session you are in
 node scripts/log-now.mjs --codex --list
+node scripts/log-now.mjs --hermes # the latest Hermes Agent conversation
+node scripts/log-now.mjs --hermes --list
 node scripts/log-now.mjs --list   # 15 most recent, newest first
 node scripts/log-now.mjs 9e22ccfa # one session by id prefix
 ```
@@ -298,6 +302,7 @@ node scripts/backfill.mjs              # log everything not yet logged
 node scripts/backfill.mjs --force      # rebuild from empty (backs up first)
 node scripts/cursor-backfill.mjs       # same, for Cursor
 node scripts/codex-backfill.mjs        # same, for Codex CLI
+node scripts/hermes-backfill.mjs       # same, for Hermes Agent
 ```
 
 Sorted by session time, because personal records are judged against prior history
@@ -417,6 +422,49 @@ was there. Log from Codex with the `snapshot` MCP tool (`npx agentrava setup --c
 registers the server in `~/.codex/config.toml`) or with
 `node scripts/log-now.mjs --codex`.
 
+## Hermes Agent
+
+[Hermes Agent](https://hermes-agent.nousresearch.com/) keeps every session in
+SQLite: `~/.hermes/state.db`, plus `~/.hermes/profiles/<name>/state.db` for each
+extra profile. That includes the CLI, the TUI, the desktop app **and** the
+messaging gateway — Telegram, Discord, Slack, WhatsApp and the rest. All of them
+are logged, because people drive Hermes from a chat app as much as from a
+terminal. The 8-tool-call floor is what keeps a chat about dinner off the board.
+
+| Field | Source |
+|---|---|
+| Tool calls | `tool_calls` on assistant rows in `messages` |
+| Tokens, cost | the `sessions` row: input / output / cache read / cache write, and Hermes's own `actual_cost_usd` or `estimated_cost_usd` — priced at the provider the request really went to. Rows it could not price fall back to list rates |
+| Lines ± | `write_file` bodies, and `patch` old/new strings (or the patch body) |
+| Files | `write_file` / `patch` paths |
+| Errors recovered | tool results carrying `error`, `success: false`, or a non-zero `exit_code` |
+| Moving time | message timestamps, gaps capped at 5 min |
+| Model | the session's `model`, with the `vendor/` prefix dropped |
+
+**One conversation can span several sessions.** Subagents, `/branch` and
+non-in-place compaction each continue under a new id linked by
+`parent_session_id`. Hermes treats the chain as one conversation, so it is logged
+as one, under the id at the top. A branch copies its history into the new row;
+`message_uid` keeps those copies from counting twice.
+
+**Auto-logging is a shell hook.** `npx agentrava setup --hermes` adds the MCP
+server under `mcp_servers:` and an `on_session_end` hook under `hooks:` in
+`~/.hermes/config.yaml`, between `# agentrava:begin` / `# agentrava:end` markers
+that `--uninstall` removes. Hermes fires that hook at the end of every turn. It
+runs a hook only once it is approved, and only a foreground `hermes chat` ever
+asks — the gateway behind the chat apps and the desktop app silently skips an
+unapproved one. So saying yes in setup also writes the approval to
+`~/.hermes/shell-hooks-allowlist.json`. Only the default profile (or
+`$HERMES_HOME`) is configured; the backfill reads every profile.
+
+Hermes does not tell an MCP server which session called it, so its `snapshot`
+picks the most recent Hermes conversation (the setup entry sets
+`AGENTRAVA_CLIENT=hermes` so the server knows to look there). Pass `session` with
+an id from `log --hermes --list` to pick another.
+
+Written against Hermes's published schema rather than a real database, so treat
+the field mapping as provisional until it has met real sessions.
+
 ## Cards
 
 ### Athlete and gear
@@ -486,7 +534,7 @@ session never redraws its route.
 ### Client names and logos
 
 Cards name the client in the header. Known ids: `claude-code`, `claude`, `cursor`,
-`openai`, `codex`, `grok`, `copilot`, `windsurf`, `zed`.
+`openai`, `codex`, `grok`, `hermes`, `copilot`, `windsurf`, `zed`.
 
 **With a logo installed, the mark sits large in the top-right corner** — 58px,
 balancing the athlete's avatar on the left, with the activity type and streak
