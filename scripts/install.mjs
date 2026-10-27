@@ -4,7 +4,7 @@
 //
 //   npx agentrava setup                  install or update; offers to log your history
 //   node scripts/install.mjs             the same, from a clone
-//   ... [--cursor] [--codex] [--yes] [--uninstall]
+//   ... [--cursor] [--codex] [--hermes] [--yes] [--uninstall]
 //   ... --manual    remove the Stop hook, keep everything else
 //   ... --auto      put the Stop hook back
 import fs from 'node:fs';
@@ -262,6 +262,141 @@ if (withCodex || UNINSTALL || (INSTALL && codexBody && codexBody.includes(CODEX_
   }
 }
 
+// 5b. Hermes Agent. MCP servers and shell hooks both live in ~/.hermes/config.yaml.
+// There is no YAML parser here, so our lines go in as text between marker
+// comments — found again by the markers, never by guessing at the YAML.
+const HERMES_HOME = process.env.HERMES_HOME || path.join(os.homedir(), '.hermes');
+const HERMES_CONF = path.join(HERMES_HOME, 'config.yaml');
+const HERMES_ALLOW = path.join(HERMES_HOME, 'shell-hooks-allowlist.json');
+const HERMES_HOOK = path.join(ROOT, 'hooks', 'hermes-log.mjs');
+// Hermes splits the command with shlex and runs it without a shell, so the
+// interpreter is named by absolute path and paths with spaces are quoted.
+const shq = (p) => (/\s/.test(p) ? `"${p}"` : p);
+const HERMES_CMD = `${shq(process.execPath)} ${shq(HERMES_HOOK)}`;
+const BEGIN = '# agentrava:begin', END = '# agentrava:end';
+
+const indentOf = (l) => l.length - l.trimStart().length;
+const isContent = (l) => l.trim() && !l.trim().startsWith('#');
+
+// Drop everything between our markers. A key left with nothing under it becomes
+// `{}` rather than null, which is what it most likely said before we arrived.
+function yamlWithout(body) {
+  const out = [];
+  let inside = false;
+  for (const line of body.split('\n')) {
+    if (line.trim() === BEGIN) {
+      inside = true;
+      const prev = out.length - 1;
+      if (prev >= 0 && /^\s*[\w-]+:$/.test(out[prev])) out[prev] = { key: out[prev] };
+      continue;
+    }
+    if (line.trim() === END) { inside = false; continue; }
+    if (!inside) out.push(line);
+  }
+  return out.map((l, i) => {
+    if (typeof l === 'string') return l;
+    const next = out.slice(i + 1).find((n) => typeof n === 'string' && isContent(n));
+    const empty = !next || indentOf(next) < indentOf(l.key)
+      || (indentOf(next) === indentOf(l.key) && !next.trimStart().startsWith('- '));
+    return empty ? `${l.key} {}` : l.key;
+  }).join('\n');
+}
+
+// Put `block` (lines relative to the deepest key) under keys[0] → keys[1] → …
+// Keys that are missing are created inside the markers, so removing the block
+// removes them too. Returns null for a layout it cannot edit safely, such as a
+// flow mapping (`hooks: {on_session_end: …}`).
+function yamlInsert(body, keys, block) {
+  const lines = body.split('\n');
+  const pad = (n) => ' '.repeat(n);
+  let start = 0, end = lines.length, indent = 0;
+  for (let k = 0; k < keys.length; k++) {
+    const key = keys[k];
+    const at = lines.findIndex((l, i) => i >= start && i < end && indentOf(l) === indent && isContent(l)
+      && new RegExp(`^${key}:(\\s|$)`).test(l.trimStart()));
+    if (at === -1) {
+      const add = keys.slice(k).map((kk, j) => pad(indent + j * 2) + kk + ':');
+      const deep = indent + (keys.length - k) * 2;
+      let pos = end;
+      while (pos > start && !lines[pos - 1].trim()) pos--;
+      lines.splice(pos, 0, pad(indent) + BEGIN, ...add, ...block.map((b) => pad(deep) + b), pad(indent) + END);
+      return lines.join('\n');
+    }
+    const rest = lines[at].trimStart().slice(key.length + 1).replace(/\s+#.*$/, '').trim();
+    if (rest && !['{}', '~', 'null'].includes(rest)) return null;
+    if (rest) lines[at] = pad(indentOf(lines[at])) + key + ':';
+    // The key's block runs until the next line at its own indent or less — but
+    // a list under it may sit at the key's own indent (`key:\n- item`).
+    const inBlock = (l) => !isContent(l) || indentOf(l) > indent
+      || (indentOf(l) === indent && l.trimStart().startsWith('- '));
+    let stop = at + 1;
+    while (stop < end && inBlock(lines[stop])) stop++;
+    const child = lines.slice(at + 1, stop).find(isContent);
+    const childIndent = child ? indentOf(child) : indent + 2;
+    if (k === keys.length - 1) {
+      lines.splice(at + 1, 0, pad(childIndent) + BEGIN, ...block.map((b) => pad(childIndent) + b), pad(childIndent) + END);
+      return lines.join('\n');
+    }
+    start = at + 1; end = stop; indent = childIndent;
+  }
+  return null;
+}
+
+const hermesBody = fs.existsSync(HERMES_CONF) ? fs.readFileSync(HERMES_CONF, 'utf8') : null;
+const hermesHad = !!hermesBody && hermesBody.includes(BEGIN);
+let withHermes = argv.includes('--hermes');
+if (INSTALL && !withHermes && hermesBody !== null && !hermesHad) {
+  console.log('');
+  withHermes = await ask('Hermes Agent found — let it use Agentrava and log its sessions?', false);
+}
+// --manual and --auto reach an existing entry too: they add or drop its hook.
+if (withHermes || hermesHad) {
+  console.log('\nHermes Agent');
+  const allow = readJson(HERMES_ALLOW, { approvals: [] });
+  const approvals = Array.isArray(allow.approvals) ? allow.approvals : [];
+  const ourApproval = (a) => a && a.event === 'on_session_end' && isOurs(String(a.command || '').replace(/"/g, ''), 'hermes-log.mjs');
+  if (UNINSTALL) {
+    if (!hermesHad) skip('no Hermes entry to remove');
+    else { const b = backup(HERMES_CONF); fs.writeFileSync(HERMES_CONF, yamlWithout(hermesBody)); ok(`Hermes MCP entry and hook removed (backup ${b})`); }
+    if (approvals.some(ourApproval)) writeJson(HERMES_ALLOW, { ...allow, approvals: approvals.filter((a) => !ourApproval(a)) });
+  } else if (hermesBody === null) warn(`no ${HERMES_CONF} — run Hermes once, then re-run with --hermes`);
+  else if (hermesHad && hermesBody.includes(SERVER) && hermesBody.includes(HERMES_HOOK) === !MANUAL) {
+    skip('Hermes MCP entry and hook already installed');
+  } else {
+    let body = yamlWithout(hermesBody);
+    body = yamlInsert(body, ['mcp_servers'], [
+      'agentrava:',
+      `  command: ${JSON.stringify(process.execPath)}`,
+      `  args: [${JSON.stringify(SERVER)}]`,
+      '  env:',
+      '    AGENTRAVA_CLIENT: hermes',
+    ]);
+    // --manual keeps the tools and drops the per-turn hook, as it does for Claude Code.
+    if (body !== null && !MANUAL) {
+      body = yamlInsert(body, ['hooks', 'on_session_end'], [
+        `- command: ${JSON.stringify(HERMES_CMD)}`,
+        '  timeout: 60',
+      ]);
+    }
+    if (body === null) {
+      warn(`${HERMES_CONF} writes mcp_servers or hooks in a form setup cannot edit safely. Add by hand:`);
+      console.log(`\n    mcp_servers:\n      agentrava:\n        command: ${JSON.stringify(process.execPath)}\n        args: [${JSON.stringify(SERVER)}]\n` +
+        `        env:\n          AGENTRAVA_CLIENT: hermes\n    hooks:\n      on_session_end:\n        - command: ${JSON.stringify(HERMES_CMD)}\n`);
+    } else {
+      const b = backup(HERMES_CONF);
+      fs.writeFileSync(HERMES_CONF, body);
+      ok(`Hermes MCP entry${MANUAL ? '' : ' and on_session_end hook'} ${hermesHad ? 'updated' : 'added'} (backup ${b})`);
+      // Hermes asks before running a new shell hook — but only in a foreground
+      // `hermes chat`; the gateway behind Telegram, Discord and the desktop app
+      // never asks and silently skips it. Saying yes above is that approval.
+      const kept = approvals.filter((a) => !ourApproval(a));
+      if (!MANUAL) kept.push({ event: 'on_session_end', command: HERMES_CMD });
+      writeJson(HERMES_ALLOW, { ...allow, approvals: kept });
+      if (!MANUAL) ok('hook approved in shell-hooks-allowlist.json — restart Hermes to pick both up');
+    }
+  }
+}
+
 // 6. History. The first card someone sees should be one of their own sessions.
 let logged = false;
 if (INSTALL) {
@@ -296,6 +431,12 @@ if (INSTALL) {
     if (await ask('Cursor history found — log it too? Takes about a minute.', false)) {
       logged = run('cursor-backfill.mjs') || logged;
     } else skip(`later: ${cli('cursor-backfill', 'cursor-backfill.mjs')}`);
+  }
+  if (fs.existsSync(path.join(HERMES_HOME, 'state.db'))) {
+    if (!found.length && !fs.existsSync(cursorDb)) console.log('\nHistory');
+    if (await ask('Hermes history found — log it too?', true)) {
+      logged = run('hermes-backfill.mjs') || logged;
+    } else skip(`later: ${cli('hermes-backfill', 'hermes-backfill.mjs')}`);
   }
   if (logged) {
     console.log('\nYour biggest session');
